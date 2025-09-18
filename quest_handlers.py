@@ -203,6 +203,35 @@ async def cmd_quest(message: Message):
         return
     
     user_id = message.from_user.id
+    
+    # Try to start as graph quest first (for quests with ID >= 2)
+    if quest_id >= 2:
+        from graph_quest_handlers import GraphQuestManager
+        from keyboards import GraphQuestKeyboardBuilder
+        
+        quest_data = await GraphQuestManager.start_graph_quest(user_id, quest_id)
+        
+        if quest_data:
+            quest = quest_data['quest']
+            current_node = quest_data['current_node']
+            connections = quest_data['connections']
+            
+            # Send quest start message
+            quest_text = (
+                f"{hbold('🎯 Graph Quest Started!')}\n\n"
+                f"{hbold(quest.title)}\n\n"
+                f"{hbold(current_node.title)}\n"
+                f"{current_node.description}\n\n"
+                f"What will you do?"
+            )
+            
+            keyboard = GraphQuestKeyboardBuilder.graph_quest_choice_keyboard(
+                quest.id, current_node.id, connections
+            )
+            await message.answer(quest_text, reply_markup=keyboard)
+            return
+    
+    # Fall back to regular quest for quest ID 1
     quest_data = await QuestManager.start_quest(user_id, quest_id)
     
     if not quest_data:
@@ -232,6 +261,34 @@ async def handle_quest_start(callback: CallbackQuery):
     quest_id = int(callback.data.split(":")[1])
     user_id = callback.from_user.id
     
+    # Try to start as graph quest first (for quests with ID >= 2)
+    if quest_id >= 2:
+        from graph_quest_handlers import GraphQuestManager
+        from keyboards import GraphQuestKeyboardBuilder
+        
+        quest_data = await GraphQuestManager.start_graph_quest(user_id, quest_id)
+        
+        if quest_data:
+            quest = quest_data['quest']
+            current_node = quest_data['current_node']
+            connections = quest_data['connections']
+            
+            quest_text = (
+                f"{hbold('🎯 Graph Quest Started!')}\n\n"
+                f"{hbold(quest.title)}\n\n"
+                f"{hbold(current_node.title)}\n"
+                f"{current_node.description}\n\n"
+                f"What will you do?"
+            )
+            
+            keyboard = GraphQuestKeyboardBuilder.graph_quest_choice_keyboard(
+                quest.id, current_node.id, connections
+            )
+            await callback.message.edit_text(quest_text, reply_markup=keyboard)
+            await callback.answer()
+            return
+    
+    # Fall back to regular quest for quest ID 1
     quest_data = await QuestManager.start_quest(user_id, quest_id)
     
     if not quest_data:

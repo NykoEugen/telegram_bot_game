@@ -83,6 +83,62 @@ class QuestProgress(Base):
         return f"<QuestProgress(user_id={self.user_id}, quest_id={self.quest_id}, status={self.status})>"
 
 
+# Graph-based quest models
+class GraphQuestNode(Base):
+    """Enhanced quest node model for graph-based quests."""
+    __tablename__ = "graph_quest_nodes"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quest_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    node_type: Mapped[str] = mapped_column(nullable=False)  # 'start', 'choice', 'action', 'end', 'condition'
+    title: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str] = mapped_column(nullable=False)
+    node_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for node-specific info
+    is_final: Mapped[bool] = mapped_column(default=False)
+    is_start: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<GraphQuestNode(id={self.id}, quest_id={self.quest_id}, type={self.node_type})>"
+
+
+class GraphQuestConnection(Base):
+    """Model for connections between quest nodes in graph structure."""
+    __tablename__ = "graph_quest_connections"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_node_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    to_node_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    connection_type: Mapped[str] = mapped_column(nullable=False)  # 'choice', 'condition', 'default'
+    choice_text: Mapped[Optional[str]] = mapped_column(nullable=True)  # Text for choice buttons
+    condition_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for conditions
+    order: Mapped[int] = mapped_column(default=0)  # Order of choices/connections
+    
+    def __repr__(self):
+        return f"<GraphQuestConnection(from={self.from_node_id}, to={self.to_node_id}, type={self.connection_type})>"
+
+
+class GraphQuestProgress(Base):
+    """Enhanced quest progress model for graph-based quests."""
+    __tablename__ = "graph_quest_progress"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'quest_id', name='uq_graph_user_quest'),
+    )
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    quest_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    current_node_id: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(nullable=False)  # 'active', 'completed', 'declined', 'paused'
+    started_at: Mapped[str] = mapped_column(nullable=False)
+    completed_at: Mapped[Optional[str]] = mapped_column(nullable=True)
+    visited_nodes: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON array of visited node IDs
+    quest_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for quest state
+    
+    def __repr__(self):
+        return f"<GraphQuestProgress(user_id={self.user_id}, quest_id={self.quest_id}, status={self.status})>"
+
+
 # Database setup
 if Config.DATABASE_URL.startswith("sqlite"):
     # For SQLite, use synchronous engine for migrations
@@ -338,3 +394,200 @@ async def get_active_quests(session: AsyncSession) -> list[Quest]:
         select(Quest).where(Quest.is_active == True)
     )
     return list(result.scalars().all())
+
+
+# Graph-based quest database functions
+async def create_graph_quest_node(
+    session: AsyncSession,
+    quest_id: int,
+    node_type: str,
+    title: str,
+    description: str,
+    node_data: Optional[str] = None,
+    is_final: bool = False,
+    is_start: bool = False
+) -> GraphQuestNode:
+    """Create a new graph quest node."""
+    from datetime import datetime
+    
+    node = GraphQuestNode(
+        quest_id=quest_id,
+        node_type=node_type,
+        title=title,
+        description=description,
+        node_data=node_data,
+        is_final=is_final,
+        is_start=is_start,
+        created_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(node)
+    await session.commit()
+    await session.refresh(node)
+    
+    return node
+
+
+async def create_graph_quest_connection(
+    session: AsyncSession,
+    from_node_id: int,
+    to_node_id: int,
+    connection_type: str,
+    choice_text: Optional[str] = None,
+    condition_data: Optional[str] = None,
+    order: int = 0
+) -> GraphQuestConnection:
+    """Create a connection between two quest nodes."""
+    connection = GraphQuestConnection(
+        from_node_id=from_node_id,
+        to_node_id=to_node_id,
+        connection_type=connection_type,
+        choice_text=choice_text,
+        condition_data=condition_data,
+        order=order
+    )
+    
+    session.add(connection)
+    await session.commit()
+    await session.refresh(connection)
+    
+    return connection
+
+
+async def get_graph_quest_node_by_id(session: AsyncSession, node_id: int) -> Optional[GraphQuestNode]:
+    """Get graph quest node by ID."""
+    result = await session.execute(
+        select(GraphQuestNode).where(GraphQuestNode.id == node_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_graph_quest_start_node(session: AsyncSession, quest_id: int) -> Optional[GraphQuestNode]:
+    """Get the start node of a graph quest."""
+    result = await session.execute(
+        select(GraphQuestNode).where(
+            GraphQuestNode.quest_id == quest_id,
+            GraphQuestNode.is_start == True
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_graph_quest_connections(session: AsyncSession, from_node_id: int) -> list[GraphQuestConnection]:
+    """Get all connections from a specific node."""
+    result = await session.execute(
+        select(GraphQuestConnection).where(
+            GraphQuestConnection.from_node_id == from_node_id
+        ).order_by(GraphQuestConnection.order)
+    )
+    return list(result.scalars().all())
+
+
+async def get_graph_quest_nodes(session: AsyncSession, quest_id: int) -> list[GraphQuestNode]:
+    """Get all nodes for a specific quest."""
+    result = await session.execute(
+        select(GraphQuestNode).where(GraphQuestNode.quest_id == quest_id)
+    )
+    return list(result.scalars().all())
+
+
+async def create_graph_quest_progress(
+    session: AsyncSession,
+    user_id: int,
+    quest_id: int,
+    current_node_id: int,
+    quest_data: Optional[str] = None
+) -> GraphQuestProgress:
+    """Create graph quest progress for a user."""
+    from datetime import datetime
+    import json
+    
+    # Check if progress already exists
+    existing_progress = await get_user_graph_quest_progress(session, user_id, quest_id)
+    if existing_progress:
+        # Update existing progress
+        existing_progress.current_node_id = current_node_id
+        existing_progress.status = 'active'
+        existing_progress.started_at = datetime.utcnow().isoformat()
+        existing_progress.completed_at = None
+        existing_progress.quest_data = quest_data
+        
+        session.add(existing_progress)
+        await session.commit()
+        await session.refresh(existing_progress)
+        
+        return existing_progress
+    
+    progress = GraphQuestProgress(
+        user_id=user_id,
+        quest_id=quest_id,
+        current_node_id=current_node_id,
+        status='active',
+        started_at=datetime.utcnow().isoformat(),
+        visited_nodes=json.dumps([current_node_id]),
+        quest_data=quest_data
+    )
+    
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    
+    return progress
+
+
+async def get_user_graph_quest_progress(
+    session: AsyncSession,
+    user_id: int,
+    quest_id: int
+) -> Optional[GraphQuestProgress]:
+    """Get user's graph quest progress."""
+    result = await session.execute(
+        select(GraphQuestProgress).where(
+            GraphQuestProgress.user_id == user_id,
+            GraphQuestProgress.quest_id == quest_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_graph_quest_progress(
+    session: AsyncSession,
+    progress: GraphQuestProgress,
+    current_node_id: Optional[int] = None,
+    status: Optional[str] = None,
+    quest_data: Optional[str] = None
+) -> GraphQuestProgress:
+    """Update graph quest progress."""
+    import json
+    
+    if current_node_id is not None:
+        progress.current_node_id = current_node_id
+        
+        # Update visited nodes
+        visited_nodes = json.loads(progress.visited_nodes or "[]")
+        if current_node_id not in visited_nodes:
+            visited_nodes.append(current_node_id)
+        progress.visited_nodes = json.dumps(visited_nodes)
+    
+    if status is not None:
+        progress.status = status
+        if status in ['completed', 'declined']:
+            from datetime import datetime
+            progress.completed_at = datetime.utcnow().isoformat()
+    
+    if quest_data is not None:
+        progress.quest_data = quest_data
+    
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    
+    return progress
+
+
+async def get_graph_quest_by_id(session: AsyncSession, quest_id: int) -> Optional[Quest]:
+    """Get quest by ID (works for both regular and graph quests)."""
+    result = await session.execute(
+        select(Quest).where(Quest.id == quest_id)
+    )
+    return result.scalar_one_or_none()
