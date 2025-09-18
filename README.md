@@ -1,0 +1,234 @@
+# Telegram Bot Game - Base Skeleton
+
+A modern Telegram bot skeleton built with aiogram 3.13, featuring webhook support, SQLite database, and async architecture. This skeleton is designed to be a starting point for building Telegram games and interactive bots.
+
+## Features
+
+- 🤖 **aiogram 3.13** - Modern async Telegram Bot API framework
+- 🔗 **Webhook Support** - Efficient webhook-based updates instead of polling
+- 🗄️ **SQLite Database** - Built-in user management and data persistence
+- ⚡ **Async/Await** - Fully asynchronous architecture for better performance
+- 🛡️ **Middleware** - Logging, rate limiting, and user validation
+- 🚀 **ngrok Integration** - Easy local development with ngrok tunneling
+- 📝 **Comprehensive Logging** - Detailed logging for debugging and monitoring
+
+## Project Structure
+
+```
+telegram_bot_game/
+├── bot.py              # Main bot application
+├── config.py           # Configuration management
+├── database.py         # Database models and operations
+├── handlers.py         # Message and command handlers
+├── middleware.py       # Custom middleware
+├── start.py           # Startup script
+├── requirements.txt    # Python dependencies
+├── env.template       # Environment variables template
+└── README.md          # This file
+```
+
+## Quick Start
+
+### 1. Prerequisites
+
+- Python 3.8+
+- Telegram Bot Token (from [@BotFather](https://t.me/botfather))
+- ngrok (for local development)
+
+### 2. Installation
+
+```bash
+# Clone or download the project
+cd telegram_bot_game
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 3. Configuration
+
+```bash
+# Copy environment template
+cp env.template .env
+
+# Edit .env file with your configuration
+nano .env  # or use your preferred editor
+```
+
+Required environment variables:
+```bash
+BOT_TOKEN=your_bot_token_from_botfather
+WEBHOOK_DOMAIN=your-ngrok-domain.ngrok.io
+WEBHOOK_SECRET=your_webhook_secret_token
+```
+
+### 4. Setup ngrok (for local development)
+
+```bash
+# Install ngrok (if not already installed)
+# Download from https://ngrok.com/download
+
+# Start ngrok tunnel
+ngrok http 8080
+
+# Copy the HTTPS URL (e.g., https://abc123.ngrok.io)
+# Update WEBHOOK_DOMAIN in your .env file
+```
+
+### 5. Run the Bot
+
+```bash
+# Start the bot
+python start.py
+```
+
+The bot will:
+- Initialize the SQLite database
+- Set up the webhook with Telegram
+- Start listening on the specified port
+- Log all activities to console
+
+## Available Commands
+
+Once the bot is running, users can interact with these commands:
+
+- `/start` - Start the bot and register user
+- `/help` - Show available commands
+- `/info` - Display user information
+- `/ping` - Test bot responsiveness
+- `/time` - Show current time
+
+## Database Schema
+
+The bot includes a basic user management system:
+
+```sql
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER UNIQUE,        -- Telegram user ID
+    username TEXT,                 -- Telegram username
+    first_name TEXT,               -- User's first name
+    last_name TEXT,                -- User's last name
+    is_bot BOOLEAN DEFAULT FALSE,  -- Whether user is a bot
+    language_code TEXT,            -- User's language preference
+    created_at TEXT NOT NULL       -- Registration timestamp
+);
+```
+
+## Development
+
+### Adding New Commands
+
+1. Create a new handler in `handlers.py`:
+
+```python
+@router.message(Command("mycommand"))
+async def cmd_mycommand(message: Message):
+    """Handle /mycommand."""
+    await message.answer("Hello from my command!")
+```
+
+2. Register the handler by including it in the router.
+
+### Adding Database Models
+
+1. Define new models in `database.py`:
+
+```python
+class GameScore(Base):
+    __tablename__ = "game_scores"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    score: Mapped[int] = mapped_column(default=0)
+    game_type: Mapped[str] = mapped_column(nullable=False)
+```
+
+2. The database will automatically create tables on startup.
+
+### Custom Middleware
+
+Add custom middleware in `middleware.py`:
+
+```python
+class CustomMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        # Your middleware logic here
+        return await handler(event, data)
+```
+
+## Production Deployment
+
+For production deployment:
+
+1. **Use a proper web server** (nginx, Apache) as a reverse proxy
+2. **Use PostgreSQL or MySQL** instead of SQLite for better performance
+3. **Set up proper logging** with log rotation
+4. **Use environment variables** for all sensitive configuration
+5. **Enable SSL/TLS** for webhook endpoints
+6. **Set up monitoring** and health checks
+
+### Environment Variables for Production
+
+```bash
+# Production configuration
+BOT_TOKEN=your_production_bot_token
+WEBHOOK_HOST=0.0.0.0
+WEBHOOK_PORT=8080
+WEBHOOK_DOMAIN=your-production-domain.com
+WEBHOOK_SECRET=strong_secret_token
+DATABASE_URL=postgresql://user:password@localhost/bot_db
+LOG_LEVEL=WARNING
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"BOT_TOKEN environment variable is required"**
+   - Make sure your `.env` file contains a valid `BOT_TOKEN`
+   - Verify the token is correct and the bot is not banned
+
+2. **"WEBHOOK_DOMAIN environment variable must be set"**
+   - Update `WEBHOOK_DOMAIN` in your `.env` file with your ngrok domain
+   - Ensure the domain is accessible via HTTPS
+
+3. **Database errors**
+   - Check file permissions for the SQLite database
+   - Ensure the directory is writable
+
+4. **ngrok connection issues**
+   - Verify ngrok is running and accessible
+   - Check firewall settings
+   - Ensure the tunnel is using HTTPS
+
+### Logs
+
+The bot provides comprehensive logging:
+- **INFO**: General bot operations and user interactions
+- **DEBUG**: Detailed processing information
+- **ERROR**: Error conditions and exceptions
+- **WARNING**: Rate limiting and other warnings
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+For questions and support:
+- Check the [aiogram documentation](https://docs.aiogram.dev/)
+- Review the [Telegram Bot API documentation](https://core.telegram.org/bots/api)
+- Open an issue in this repository
