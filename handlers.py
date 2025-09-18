@@ -71,7 +71,10 @@ async def cmd_help(message: Message):
         f"/help - Show this help message\n"
         f"/info - Show user information\n"
         f"/ping - Test bot responsiveness\n"
-        f"/time - Show current time"
+        f"/time - Show current time\n\n"
+        f"{hbold('Quest Commands:')}\n"
+        f"/quests - Show available quests\n"
+        f"/quest &lt;id&gt; - Start a specific quest"
     )
     
     await message.answer(help_text)
@@ -134,7 +137,7 @@ async def cmd_time(message: Message):
     await message.answer(time_text)
 
 
-@router.message(F.text)
+@router.message(F.text & ~F.text.startswith('/'))
 async def handle_text_messages(message: Message):
     """Handle all text messages that don't match any command."""
     user = message.from_user
@@ -150,5 +153,8 @@ async def handle_text_messages(message: Message):
 
 def register_handlers(dp: Dispatcher):
     """Register all handlers with the dispatcher."""
+    from quest_handlers import register_quest_handlers
+    
     dp.include_router(router)
+    register_quest_handlers(dp)
     logger.info("All handlers registered successfully")

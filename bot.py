@@ -26,6 +26,14 @@ async def on_startup(app: web.Application):
     """Application startup handler."""
     await init_db()
     logger.info("Database initialized")
+    
+    # Initialize sample quests
+    try:
+        from init_quests import create_sample_quest
+        await create_sample_quest()
+        logger.info("Sample quests initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize sample quests: {e}")
 
 
 async def on_shutdown(app: web.Application):
