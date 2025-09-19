@@ -478,6 +478,122 @@ async def init_hero_classes_command(message: Message):
             await message.answer("❌ Помилка при ініціалізації класів героїв.")
 
 
+@hero_router.callback_query(F.data.startswith("hero_menu_from_inn:"))
+async def hero_menu_from_inn_handler(callback: CallbackQuery):
+    """Handle hero menu button from inn."""
+    await callback.answer()
+    
+    # Parse callback data to get town_id and node_id
+    parts = callback.data.split(":")
+    town_id = int(parts[1])
+    node_id = int(parts[2])
+    
+    async for session in get_db_session():
+        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        if not user:
+            await callback.message.answer("❌ Користувач не знайдений. Використайте /start для реєстрації.")
+            return
+        
+        hero = await get_hero_by_user_id(session, user.id)
+        
+        if hero:
+            # Show existing hero info
+            hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+            if hero_class:
+                hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
+                stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
+                
+                # Create keyboard with close button that returns to inn
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚪 Повернутися в таверну", callback_data=f"close_hero_to_inn:{town_id}:{node_id}")]
+                ])
+                
+                await callback.message.edit_text(stats_text, reply_markup=keyboard)
+            else:
+                await callback.message.answer("❌ Помилка: клас героя не знайдений.")
+        else:
+            # No hero exists, offer to create one
+            await callback.message.edit_text(
+                "👤 У вас ще немає героя!\n\n"
+                "Створіть свого героя, щоб почати пригоди:\n"
+                "• Виберіть клас героя\n"
+                "• Дайте йому ім'я\n"
+                "• Почніть свою подорож!\n\n"
+                "Використайте /create_hero для створення героя.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚪 Повернутися в таверну", callback_data=f"close_hero_to_inn:{town_id}:{node_id}")]
+                ])
+            )
+
+
+@hero_router.callback_query(F.data == "hero_menu")
+async def hero_menu_handler(callback: CallbackQuery):
+    """Handle hero menu button from other locations (fallback)."""
+    await callback.answer()
+    
+    async for session in get_db_session():
+        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        if not user:
+            await callback.message.answer("❌ Користувач не знайдений. Використайте /start для реєстрації.")
+            return
+        
+        hero = await get_hero_by_user_id(session, user.id)
+        
+        if hero:
+            # Show existing hero info
+            hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+            if hero_class:
+                hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
+                stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
+                
+                # Create keyboard with close button
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚪 Закрити", callback_data="close_hero_info")]
+                ])
+                
+                await callback.message.edit_text(stats_text, reply_markup=keyboard)
+            else:
+                await callback.message.answer("❌ Помилка: клас героя не знайдений.")
+        else:
+            # No hero exists, offer to create one
+            await callback.message.edit_text(
+                "👤 У вас ще немає героя!\n\n"
+                "Створіть свого героя, щоб почати пригоди:\n"
+                "• Виберіть клас героя\n"
+                "• Дайте йому ім'я\n"
+                "• Почніть свою подорож!\n\n"
+                "Використайте /create_hero для створення героя.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚪 Закрити", callback_data="close_hero_info")]
+                ])
+            )
+
+
+@hero_router.callback_query(F.data.startswith("close_hero_to_inn:"))
+async def close_hero_to_inn_handler(callback: CallbackQuery):
+    """Handle close hero info and return to inn."""
+    await callback.answer()
+    
+    # Parse callback data to get town_id and node_id
+    parts = callback.data.split(":")
+    town_id = int(parts[1])
+    node_id = int(parts[2])
+    
+    # Import here to avoid circular imports
+    from town_handlers import handle_town_back_to_location
+    
+    # Create a mock callback with the correct data for town_back_to_location
+    class MockCallback:
+        def __init__(self, original_callback, town_id, node_id):
+            self.message = original_callback.message
+            self.from_user = original_callback.from_user
+            self.data = f"town_back_to_location:{town_id}:{node_id}"
+            self.answer = original_callback.answer
+    
+    mock_callback = MockCallback(callback, town_id, node_id)
+    await handle_town_back_to_location(mock_callback)
+
+
 @hero_router.callback_query(F.data == "close_hero_info")
 async def close_hero_info(callback: CallbackQuery):
     """Handle close hero info button."""

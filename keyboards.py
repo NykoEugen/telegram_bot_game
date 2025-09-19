@@ -431,7 +431,8 @@ class TownKeyboardBuilder:
     def town_node_keyboard(
         town_id: int, 
         node_id: int, 
-        connections: list[object]
+        connections: list[object],
+        node_names: dict[int, str] = None
     ) -> InlineKeyboardMarkup:
         """
         Create keyboard for town node with available connections.
@@ -440,6 +441,7 @@ class TownKeyboardBuilder:
             town_id: ID of the town
             node_id: ID of the current node
             connections: List of TownConnection objects
+            node_names: Dictionary mapping node_id to node_name
             
         Returns:
             InlineKeyboardMarkup with navigation options
@@ -448,9 +450,14 @@ class TownKeyboardBuilder:
         
         # Add connection buttons for each available path
         for connection in connections:
-            # Get the target node name (we'll need to fetch this in the handler)
+            # Use node name if available, otherwise fallback to node ID
+            if node_names and connection.to_node_id in node_names:
+                button_text = f"🚶 {node_names[connection.to_node_id]}"
+            else:
+                button_text = f"🚶 Go to Node {connection.to_node_id}"
+            
             builder.button(
-                text=f"🚶 Go to Node {connection.to_node_id}",
+                text=button_text,
                 callback_data=f"town_move:{town_id}:{node_id}:{connection.to_node_id}"
             )
         
@@ -472,9 +479,9 @@ class TownKeyboardBuilder:
             callback_data=f"town_center:{town_id}"
         )
         
-        # Adjust layout
+        # Adjust layout - 1 button per row for better text visibility
         if connections:
-            builder.adjust(len(connections), 1, 2)
+            builder.adjust(1, 1, 2)  # connections in separate rows, then actions
         else:
             builder.adjust(1, 2)
         
@@ -641,14 +648,20 @@ class TownKeyboardBuilder:
             callback_data=f"inn_talk:{town_id}:{node_id}"
         )
         
+        # Hero menu button
+        builder.button(
+            text="👤 Hero Menu",
+            callback_data=f"hero_menu_from_inn:{town_id}:{node_id}"
+        )
+        
         # Leave inn button
         builder.button(
             text="🚪 Leave Inn",
             callback_data=f"town_leave_building:{town_id}:{node_id}"
         )
         
-        # Adjust layout
-        builder.adjust(2, 2)
+        # Adjust layout - 2 buttons per row for better visibility
+        builder.adjust(2, 2, 1)
         
         return builder.as_markup()
     

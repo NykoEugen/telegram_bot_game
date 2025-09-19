@@ -42,6 +42,17 @@ async def safe_edit_message(callback: CallbackQuery, text: str, reply_markup=Non
             raise
 
 
+async def get_node_names_for_connections(session, connections):
+    """Get node names for a list of connections."""
+    node_names = {}
+    for connection in connections:
+        if connection.to_node_id not in node_names:
+            node = await get_town_node_by_id(session, connection.to_node_id)
+            if node:
+                node_names[connection.to_node_id] = node.name
+    return node_names
+
+
 @router.message(Command("town"))
 async def cmd_town(message: Message):
     """Handle /town command to enter the starting village."""
@@ -98,7 +109,9 @@ async def cmd_town(message: Message):
         elif current_node.node_type == "inn":
             keyboard = TownKeyboardBuilder.inn_keyboard(town_id, current_node.id)
         else:
-            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections)
+            # Get node names for connections
+            node_names = await get_node_names_for_connections(session, connections)
+            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections, node_names)
         
         await message.answer(welcome_text, reply_markup=keyboard)
 
@@ -128,7 +141,8 @@ async def handle_town_explore(callback: CallbackQuery):
         connections = await get_town_connections(session, current_node.id)
         
         # Create navigation keyboard
-        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections)
+        node_names = await get_node_names_for_connections(session, connections)
+        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections, node_names)
         
         explore_text = (
             f"🔍 {hbold('Exploring')} {current_node.name}\n\n"
@@ -284,7 +298,9 @@ async def handle_town_move(callback: CallbackQuery):
         elif target_node.node_type == "inn":
             keyboard = TownKeyboardBuilder.inn_keyboard(town_id, target_node.id)
         else:
-            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, target_node.id, new_connections)
+            # Get node names for connections
+            node_names = await get_node_names_for_connections(session, new_connections)
+            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, target_node.id, new_connections, node_names)
         
         await safe_edit_message(callback, arrival_text, keyboard)
 
@@ -335,7 +351,9 @@ async def handle_town_go_to(callback: CallbackQuery):
         elif target_node.node_type == "inn":
             keyboard = TownKeyboardBuilder.inn_keyboard(town_id, target_node.id)
         else:
-            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, target_node.id, connections)
+            # Get node names for connections
+            node_names = await get_node_names_for_connections(session, connections)
+            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, target_node.id, connections, node_names)
         
         await safe_edit_message(callback, arrival_text, keyboard)
 
@@ -373,7 +391,8 @@ async def handle_town_center(callback: CallbackQuery):
         
         # Get available connections from center
         connections = await get_town_connections(session, 1)
-        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, 1, connections)
+        node_names = await get_node_names_for_connections(session, connections)
+        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, 1, connections, node_names)
         
         await safe_edit_message(callback, center_text, keyboard)
 
@@ -868,7 +887,9 @@ async def handle_town_explore_node(callback: CallbackQuery):
         elif current_node.node_type == "inn":
             keyboard = TownKeyboardBuilder.inn_keyboard(town_id, current_node.id)
         else:
-            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections)
+            # Get node names for connections
+            node_names = await get_node_names_for_connections(session, connections)
+            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections, node_names)
         
         explore_text = (
             f"🔍 {hbold('Exploring')} {current_node.name}\n\n"
@@ -915,7 +936,8 @@ async def handle_town_leave_building(callback: CallbackQuery):
         
         # Get available connections from center
         connections = await get_town_connections(session, 1)
-        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, 1, connections)
+        node_names = await get_node_names_for_connections(session, connections)
+        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, 1, connections, node_names)
         
         await safe_edit_message(callback, departure_text, keyboard)
 
@@ -965,7 +987,8 @@ async def handle_town_back_to_location(callback: CallbackQuery):
         else:
             # For other node types, get connections and use general keyboard
             connections = await get_town_connections(session, target_node.id)
-            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, target_node.id, connections)
+            node_names = await get_node_names_for_connections(session, connections)
+            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, target_node.id, connections, node_names)
         
         await safe_edit_message(callback, return_text, keyboard)
 
@@ -1050,7 +1073,8 @@ async def auto_return_to_town(callback: CallbackQuery, town_id: int = 1):
         
         # Get available connections from center
         connections = await get_town_connections(session, 1)
-        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, 1, connections)
+        node_names = await get_node_names_for_connections(session, connections)
+        keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, 1, connections, node_names)
         
         await safe_edit_message(callback, return_text, keyboard)
 
