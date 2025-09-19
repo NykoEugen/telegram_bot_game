@@ -169,85 +169,54 @@ class HeroCalculator:
 
 
 class HeroClasses:
-    """Predefined hero classes with their stats and growth."""
+    """Hero classes loaded from JSON configuration."""
     
-    @staticmethod
-    def get_warrior_data() -> Dict[str, Any]:
-        """Warrior class data: STR+2, VIT+2 / рівень: +STR, +VIT"""
-        return {
-            'name': 'Воїн',
-            'description': 'Міцний борець, який покладається на силу та витривалість. Відмінний у ближньому бою.',
-            'str_bonus': 2,
-            'agi_bonus': 0,
-            'int_bonus': 0,
-            'vit_bonus': 2,
-            'luk_bonus': 0,
-            'stat_growth': '{"str": 1, "agi": 0, "int": 0, "vit": 1, "luk": 0}'
-        }
+    _classes_data = None
     
-    @staticmethod
-    def get_rogue_data() -> Dict[str, Any]:
-        """Rogue class data: AGI+2, LUK+1 / рівень: +AGI, +LUK"""
-        return {
-            'name': 'Розбійник',
-            'description': 'Спритний і удачливий воїн. Має високу шанс критичного удару та ухилення.',
-            'str_bonus': 0,
-            'agi_bonus': 2,
-            'int_bonus': 0,
-            'vit_bonus': 0,
-            'luk_bonus': 1,
-            'stat_growth': '{"str": 0, "agi": 1, "int": 0, "vit": 0, "luk": 1}'
-        }
+    @classmethod
+    def _load_classes_data(cls) -> list[Dict[str, Any]]:
+        """Load hero classes data from JSON file."""
+        if cls._classes_data is None:
+            import os
+            import json
+            
+            # Get the directory of the current file
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            json_file_path = os.path.join(current_dir, 'data', 'hero_classes.json')
+            
+            try:
+                with open(json_file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    cls._classes_data = data['hero_classes']
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Hero classes JSON file not found at {json_file_path}")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in hero classes file: {e}")
+        
+        return cls._classes_data
     
-    @staticmethod
-    def get_mage_data() -> Dict[str, Any]:
-        """Mage class data: INT+3 / рівень: +INT, +AGI"""
-        return {
-            'name': 'Маг',
-            'description': 'Могутній заклинатель, який використовує магію для атаки. Високий магічний урон.',
-            'str_bonus': 0,
-            'agi_bonus': 0,
-            'int_bonus': 3,
-            'vit_bonus': 0,
-            'luk_bonus': 0,
-            'stat_growth': '{"str": 0, "agi": 1, "int": 1, "vit": 0, "luk": 0}'
-        }
+    @classmethod
+    def get_all_classes(cls) -> list[Dict[str, Any]]:
+        """Get all hero classes data from JSON file."""
+        classes_data = cls._load_classes_data()
+        
+        # Convert stat_growth dict to JSON string for compatibility
+        for class_data in classes_data:
+            if isinstance(class_data['stat_growth'], dict):
+                class_data['stat_growth'] = json.dumps(class_data['stat_growth'])
+        
+        return classes_data
     
-    @staticmethod
-    def get_cleric_data() -> Dict[str, Any]:
-        """Cleric class data: INT+1, VIT+2 / рівень: +VIT, +INT"""
-        return {
-            'name': 'Клірик',
-            'description': 'Священний воїн, який поєднує магію з витривалістю. Відмінний підтримкою та захистом.',
-            'str_bonus': 0,
-            'agi_bonus': 0,
-            'int_bonus': 1,
-            'vit_bonus': 2,
-            'luk_bonus': 0,
-            'stat_growth': '{"str": 0, "agi": 0, "int": 1, "vit": 1, "luk": 0}'
-        }
-    
-    @staticmethod
-    def get_ranger_data() -> Dict[str, Any]:
-        """Ranger class data: STR+1, AGI+2 / рівень: +AGI, +STR"""
-        return {
-            'name': 'Рейнджер',
-            'description': 'Універсальний борець, який поєднує силу та спритність. Добре збалансований клас.',
-            'str_bonus': 1,
-            'agi_bonus': 2,
-            'int_bonus': 0,
-            'vit_bonus': 0,
-            'luk_bonus': 0,
-            'stat_growth': '{"str": 1, "agi": 1, "int": 0, "vit": 0, "luk": 0}'
-        }
-    
-    @staticmethod
-    def get_all_classes() -> list[Dict[str, Any]]:
-        """Get all hero classes data."""
-        return [
-            HeroClasses.get_warrior_data(),
-            HeroClasses.get_rogue_data(),
-            HeroClasses.get_mage_data(),
-            HeroClasses.get_cleric_data(),
-            HeroClasses.get_ranger_data()
-        ]
+    @classmethod
+    def get_class_by_name(cls, name: str) -> Optional[Dict[str, Any]]:
+        """Get hero class data by name."""
+        classes_data = cls._load_classes_data()
+        
+        for class_data in classes_data:
+            if class_data['name'] == name:
+                # Convert stat_growth dict to JSON string for compatibility
+                if isinstance(class_data['stat_growth'], dict):
+                    class_data['stat_growth'] = json.dumps(class_data['stat_growth'])
+                return class_data
+        
+        return None

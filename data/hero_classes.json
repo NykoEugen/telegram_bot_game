@@ -1,0 +1,84 @@
+{
+  "hero_classes": [
+    {
+      "name": "Воїн",
+      "description": "Міцний борець, який покладається на силу та витривалість. Відмінний у ближньому бою.",
+      "str_bonus": 2,
+      "agi_bonus": 0,
+      "int_bonus": 0,
+      "vit_bonus": 2,
+      "luk_bonus": 0,
+      "stat_growth": {
+        "str": 1,
+        "agi": 0,
+        "int": 0,
+        "vit": 1,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Розбійник",
+      "description": "Спритний і удачливий воїн. Має високу шанс критичного удару та ухилення.",
+      "str_bonus": 0,
+      "agi_bonus": 2,
+      "int_bonus": 0,
+      "vit_bonus": 0,
+      "luk_bonus": 1,
+      "stat_growth": {
+        "str": 0,
+        "agi": 1,
+        "int": 0,
+        "vit": 0,
+        "luk": 1
+      }
+    },
+    {
+      "name": "Маг",
+      "description": "Могутній заклинатель, який використовує магію для атаки. Високий магічний урон.",
+      "str_bonus": 0,
+      "agi_bonus": 0,
+      "int_bonus": 3,
+      "vit_bonus": 0,
+      "luk_bonus": 0,
+      "stat_growth": {
+        "str": 0,
+        "agi": 1,
+        "int": 1,
+        "vit": 0,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Клірик",
+      "description": "Священний воїн, який поєднує магію з витривалістю. Відмінний підтримкою та захистом.",
+      "str_bonus": 0,
+      "agi_bonus": 0,
+      "int_bonus": 1,
+      "vit_bonus": 2,
+      "luk_bonus": 0,
+      "stat_growth": {
+        "str": 0,
+        "agi": 0,
+        "int": 1,
+        "vit": 1,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Рейнджер",
+      "description": "Універсальний борець, який поєднує силу та спритність. Добре збалансований клас.",
+      "str_bonus": 1,
+      "agi_bonus": 2,
+      "int_bonus": 0,
+      "vit_bonus": 0,
+      "luk_bonus": 0,
+      "stat_growth": {
+        "str": 1,
+        "agi": 1,
+        "int": 0,
+        "vit": 0,
+        "luk": 0
+      }
+    }
+  ]
+}

@@ -593,6 +593,59 @@ async def get_graph_quest_by_id(session: AsyncSession, quest_id: int) -> Optiona
     return result.scalar_one_or_none()
 
 
+# Monster system models
+class MonsterClass(Base):
+    """Monster class model for storing monster class information."""
+    __tablename__ = "monster_classes"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(nullable=False)
+    
+    # Base stats for this monster class
+    base_str: Mapped[int] = mapped_column(default=5)
+    base_agi: Mapped[int] = mapped_column(default=5)
+    base_int: Mapped[int] = mapped_column(default=5)
+    base_vit: Mapped[int] = mapped_column(default=5)
+    base_luk: Mapped[int] = mapped_column(default=5)
+    
+    # Stat growth per level (JSON string: {"str": 1, "agi": 0, "int": 0, "vit": 1, "luk": 0})
+    stat_growth: Mapped[str] = mapped_column(nullable=False, default='{"str": 0, "agi": 0, "int": 0, "vit": 0, "luk": 0}')
+    
+    # Monster-specific properties
+    monster_type: Mapped[str] = mapped_column(nullable=False)  # 'beast', 'undead', 'demon', 'elemental', 'humanoid'
+    difficulty: Mapped[str] = mapped_column(nullable=False)  # 'easy', 'normal', 'hard', 'boss'
+    
+    def __repr__(self):
+        return f"<MonsterClass(id={self.id}, name={self.name}, type={self.monster_type})>"
+
+
+class Monster(Base):
+    """Monster model for storing monster instances."""
+    __tablename__ = "monsters"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    monster_class_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    
+    # Monster basic info
+    name: Mapped[str] = mapped_column(nullable=False)
+    level: Mapped[int] = mapped_column(default=1)
+    
+    # Current HP (calculated from max HP)
+    current_hp: Mapped[int] = mapped_column(default=20)
+    
+    # Monster location and spawn info
+    location: Mapped[Optional[str]] = mapped_column(nullable=True)  # Where this monster can be found
+    is_active: Mapped[bool] = mapped_column(default=True)  # Whether monster is currently spawned
+    
+    # Timestamps
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    last_activity_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<Monster(id={self.id}, name={self.name}, level={self.level})>"
+
+
 # Hero system models
 class HeroClass(Base):
     """Hero class model for storing hero class information."""
@@ -1090,3 +1143,171 @@ async def add_hero_experience(session: AsyncSession, hero: Hero, experience: int
             break
     
     return await update_hero(session, hero)
+
+
+# Monster-related database functions
+async def create_monster_class(
+    session: AsyncSession,
+    name: str,
+    description: str,
+    monster_type: str,
+    difficulty: str,
+    base_str: int = 5,
+    base_agi: int = 5,
+    base_int: int = 5,
+    base_vit: int = 5,
+    base_luk: int = 5,
+    stat_growth: str = '{"str": 0, "agi": 0, "int": 0, "vit": 0, "luk": 0}'
+) -> MonsterClass:
+    """Create a new monster class."""
+    monster_class = MonsterClass(
+        name=name,
+        description=description,
+        monster_type=monster_type,
+        difficulty=difficulty,
+        base_str=base_str,
+        base_agi=base_agi,
+        base_int=base_int,
+        base_vit=base_vit,
+        base_luk=base_luk,
+        stat_growth=stat_growth
+    )
+    
+    session.add(monster_class)
+    await session.commit()
+    await session.refresh(monster_class)
+    
+    return monster_class
+
+
+async def get_monster_class_by_id(session: AsyncSession, class_id: int) -> Optional[MonsterClass]:
+    """Get monster class by ID."""
+    result = await session.execute(
+        select(MonsterClass).where(MonsterClass.id == class_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_monster_class_by_name(session: AsyncSession, name: str) -> Optional[MonsterClass]:
+    """Get monster class by name."""
+    result = await session.execute(
+        select(MonsterClass).where(MonsterClass.name == name)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_all_monster_classes(session: AsyncSession) -> list[MonsterClass]:
+    """Get all monster classes."""
+    result = await session.execute(select(MonsterClass))
+    return list(result.scalars().all())
+
+
+async def get_monster_classes_by_type(session: AsyncSession, monster_type: str) -> list[MonsterClass]:
+    """Get monster classes by type."""
+    result = await session.execute(
+        select(MonsterClass).where(MonsterClass.monster_type == monster_type)
+    )
+    return list(result.scalars().all())
+
+
+async def get_monster_classes_by_difficulty(session: AsyncSession, difficulty: str) -> list[MonsterClass]:
+    """Get monster classes by difficulty."""
+    result = await session.execute(
+        select(MonsterClass).where(MonsterClass.difficulty == difficulty)
+    )
+    return list(result.scalars().all())
+
+
+async def create_monster(
+    session: AsyncSession,
+    monster_class_id: int,
+    name: str,
+    level: int = 1,
+    location: Optional[str] = None
+) -> Monster:
+    """Create a new monster instance."""
+    from datetime import datetime
+    
+    # Get monster class to calculate starting HP
+    monster_class = await get_monster_class_by_id(session, monster_class_id)
+    if not monster_class:
+        raise ValueError(f"Monster class with ID {monster_class_id} not found")
+    
+    # Calculate starting HP based on level and VIT
+    import json
+    stat_growth = json.loads(monster_class.stat_growth)
+    total_vit = monster_class.base_vit + (stat_growth.get('vit', 0) * (level - 1))
+    starting_hp = 20 + 4 * total_vit
+    
+    monster = Monster(
+        monster_class_id=monster_class_id,
+        name=name,
+        level=level,
+        current_hp=starting_hp,
+        location=location,
+        is_active=True,
+        created_at=datetime.utcnow().isoformat(),
+        last_activity_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(monster)
+    await session.commit()
+    await session.refresh(monster)
+    
+    return monster
+
+
+async def get_monster_by_id(session: AsyncSession, monster_id: int) -> Optional[Monster]:
+    """Get monster by ID."""
+    result = await session.execute(
+        select(Monster).where(Monster.id == monster_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_active_monsters(session: AsyncSession) -> list[Monster]:
+    """Get all active monsters."""
+    result = await session.execute(
+        select(Monster).where(Monster.is_active == True)
+    )
+    return list(result.scalars().all())
+
+
+async def get_monsters_by_location(session: AsyncSession, location: str) -> list[Monster]:
+    """Get monsters by location."""
+    result = await session.execute(
+        select(Monster).where(
+            Monster.location == location,
+            Monster.is_active == True
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def get_monsters_by_level_range(session: AsyncSession, min_level: int, max_level: int) -> list[Monster]:
+    """Get monsters within a level range."""
+    result = await session.execute(
+        select(Monster).where(
+            Monster.level >= min_level,
+            Monster.level <= max_level,
+            Monster.is_active == True
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def update_monster(session: AsyncSession, monster: Monster) -> Monster:
+    """Update monster information."""
+    from datetime import datetime
+    monster.last_activity_at = datetime.utcnow().isoformat()
+    
+    session.add(monster)
+    await session.commit()
+    await session.refresh(monster)
+    return monster
+
+
+async def deactivate_monster(session: AsyncSession, monster: Monster) -> Monster:
+    """Deactivate a monster (remove from active spawns)."""
+    monster.is_active = False
+    return await update_monster(session, monster)
