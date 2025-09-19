@@ -4,6 +4,7 @@ from datetime import datetime
 from aiogram import Dispatcher, Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, User
+from aiogram.fsm.context import FSMContext
 from aiogram.utils.markdown import hbold, hitalic
 
 from database import AsyncSessionLocal, create_user, get_user_by_telegram_id, update_user
@@ -65,6 +66,7 @@ async def cmd_start(message: Message):
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Handle /help command."""
+    logger.info(f"Help command from user {message.from_user.id}")
     help_text = (
         f"{hbold('Available Commands:')}\n\n"
         f"/start - Start the bot and register user\n"
@@ -73,6 +75,10 @@ async def cmd_help(message: Message):
         f"/ping - Test bot responsiveness\n"
         f"/time - Show current time\n\n"
         f"{hbold('RPG Commands:')}\n"
+        f"/hero - Show hero information or create hero\n"
+        f"/create_hero - Create a new hero\n"
+        f"/classes - Show available hero classes\n"
+        f"/stats - Show hero stats (same as /hero)\n"
         f"/town - Enter the starting village\n"
         f"/quests - Show available quests\n"
         f"/quest &lt;id&gt; - Start a specific quest"
@@ -139,8 +145,17 @@ async def cmd_time(message: Message):
 
 
 @router.message(F.text & ~F.text.startswith('/'))
-async def handle_text_messages(message: Message):
-    """Handle all text messages that don't match any command."""
+async def handle_text_messages(message: Message, state: FSMContext):
+    """Handle all text messages that don't match any command and user is not in FSM state."""
+    # Check if user is in any FSM state
+    current_state = await state.get_state()
+    logger.info(f"General text handler: user {message.from_user.id}, text: '{message.text}', state: {current_state}")
+    
+    if current_state is not None:
+        # User is in FSM state, let specific handlers deal with it
+        logger.info(f"User {message.from_user.id} is in FSM state {current_state}, skipping general handler")
+        return
+    
     user = message.from_user
     
     response_text = (
@@ -157,9 +172,15 @@ def register_handlers(dp: Dispatcher):
     from quest_handlers import register_quest_handlers
     from graph_quest_handlers import register_graph_quest_handlers
     from town_handlers import register_town_handlers
+    from hero_handlers import register_hero_handlers
     
+    # Register FSM handlers FIRST to ensure they have priority
+    register_hero_handlers(dp)
+    
+    # Then register other handlers
     dp.include_router(router)
     register_quest_handlers(dp)
     register_graph_quest_handlers(dp)
     register_town_handlers(dp)
+    
     logger.info("All handlers registered successfully")

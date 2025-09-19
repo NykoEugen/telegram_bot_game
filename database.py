@@ -593,6 +593,63 @@ async def get_graph_quest_by_id(session: AsyncSession, quest_id: int) -> Optiona
     return result.scalar_one_or_none()
 
 
+# Hero system models
+class HeroClass(Base):
+    """Hero class model for storing hero class information."""
+    __tablename__ = "hero_classes"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(nullable=False)
+    
+    # Starting stats bonuses
+    str_bonus: Mapped[int] = mapped_column(default=0)
+    agi_bonus: Mapped[int] = mapped_column(default=0)
+    int_bonus: Mapped[int] = mapped_column(default=0)
+    vit_bonus: Mapped[int] = mapped_column(default=0)
+    luk_bonus: Mapped[int] = mapped_column(default=0)
+    
+    # Stat growth per level (JSON string: {"str": 1, "agi": 0, "int": 0, "vit": 1, "luk": 0})
+    stat_growth: Mapped[str] = mapped_column(nullable=False, default='{"str": 0, "agi": 0, "int": 0, "vit": 0, "luk": 0}')
+    
+    def __repr__(self):
+        return f"<HeroClass(id={self.id}, name={self.name})>"
+
+
+class Hero(Base):
+    """Hero model for storing user hero information."""
+    __tablename__ = "heroes"
+    __table_args__ = (
+        UniqueConstraint('user_id', name='uq_user_hero'),
+    )
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, unique=True, index=True)
+    hero_class_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    
+    # Hero basic info
+    name: Mapped[str] = mapped_column(nullable=False)
+    level: Mapped[int] = mapped_column(default=1)
+    experience: Mapped[int] = mapped_column(default=0)
+    
+    # Base stats (before class bonuses and level ups)
+    base_str: Mapped[int] = mapped_column(default=5)
+    base_agi: Mapped[int] = mapped_column(default=5)
+    base_int: Mapped[int] = mapped_column(default=5)
+    base_vit: Mapped[int] = mapped_column(default=5)
+    base_luk: Mapped[int] = mapped_column(default=5)
+    
+    # Current HP (calculated from max HP)
+    current_hp: Mapped[int] = mapped_column(default=20)
+    
+    # Timestamps
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    last_activity_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<Hero(id={self.id}, user_id={self.user_id}, name={self.name}, level={self.level})>"
+
+
 # Town/Location system models
 class Town(Base):
     """Town model for storing town/location information."""
@@ -877,3 +934,159 @@ async def update_user_town_progress(
     await session.refresh(progress)
     
     return progress
+
+
+# Hero-related database functions
+async def create_hero_class(
+    session: AsyncSession,
+    name: str,
+    description: str,
+    str_bonus: int = 0,
+    agi_bonus: int = 0,
+    int_bonus: int = 0,
+    vit_bonus: int = 0,
+    luk_bonus: int = 0,
+    stat_growth: str = '{"str": 0, "agi": 0, "int": 0, "vit": 0, "luk": 0}'
+) -> HeroClass:
+    """Create a new hero class."""
+    hero_class = HeroClass(
+        name=name,
+        description=description,
+        str_bonus=str_bonus,
+        agi_bonus=agi_bonus,
+        int_bonus=int_bonus,
+        vit_bonus=vit_bonus,
+        luk_bonus=luk_bonus,
+        stat_growth=stat_growth
+    )
+    
+    session.add(hero_class)
+    await session.commit()
+    await session.refresh(hero_class)
+    
+    return hero_class
+
+
+async def get_hero_class_by_id(session: AsyncSession, class_id: int) -> Optional[HeroClass]:
+    """Get hero class by ID."""
+    result = await session.execute(
+        select(HeroClass).where(HeroClass.id == class_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_hero_class_by_name(session: AsyncSession, name: str) -> Optional[HeroClass]:
+    """Get hero class by name."""
+    result = await session.execute(
+        select(HeroClass).where(HeroClass.name == name)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_all_hero_classes(session: AsyncSession) -> list[HeroClass]:
+    """Get all hero classes."""
+    result = await session.execute(select(HeroClass))
+    return list(result.scalars().all())
+
+
+async def create_hero(
+    session: AsyncSession,
+    user_id: int,
+    hero_class_id: int,
+    name: str,
+    base_str: int = 5,
+    base_agi: int = 5,
+    base_int: int = 5,
+    base_vit: int = 5,
+    base_luk: int = 5
+) -> Hero:
+    """Create a new hero for a user."""
+    from datetime import datetime
+    
+    # Get hero class to calculate starting HP
+    hero_class = await get_hero_class_by_id(session, hero_class_id)
+    if not hero_class:
+        raise ValueError(f"Hero class with ID {hero_class_id} not found")
+    
+    # Calculate total stats with class bonuses
+    total_vit = base_vit + hero_class.vit_bonus
+    
+    # Calculate starting HP: HP_MAX = 20 + 4*VIT
+    starting_hp = 20 + 4 * total_vit
+    
+    hero = Hero(
+        user_id=user_id,
+        hero_class_id=hero_class_id,
+        name=name,
+        level=1,
+        experience=0,
+        base_str=base_str,
+        base_agi=base_agi,
+        base_int=base_int,
+        base_vit=base_vit,
+        base_luk=base_luk,
+        current_hp=starting_hp,
+        created_at=datetime.utcnow().isoformat(),
+        last_activity_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(hero)
+    await session.commit()
+    await session.refresh(hero)
+    
+    return hero
+
+
+async def get_hero_by_user_id(session: AsyncSession, user_id: int) -> Optional[Hero]:
+    """Get hero by user ID."""
+    result = await session.execute(
+        select(Hero).where(Hero.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_hero(session: AsyncSession, hero: Hero) -> Hero:
+    """Update hero information."""
+    from datetime import datetime
+    hero.last_activity_at = datetime.utcnow().isoformat()
+    
+    session.add(hero)
+    await session.commit()
+    await session.refresh(hero)
+    return hero
+
+
+async def add_hero_experience(session: AsyncSession, hero: Hero, experience: int) -> Hero:
+    """Add experience to hero and handle level ups."""
+    import json
+    
+    hero.experience += experience
+    
+    # Check for level ups
+    while True:
+        xp_needed = 50 + 25 * hero.level
+        if hero.experience >= xp_needed:
+            # Level up
+            hero.experience -= xp_needed
+            hero.level += 1
+            
+            # Get hero class for stat growth
+            hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+            if hero_class:
+                stat_growth = json.loads(hero_class.stat_growth)
+                
+                # Apply stat growth
+                hero.base_str += stat_growth.get('str', 0)
+                hero.base_agi += stat_growth.get('agi', 0)
+                hero.base_int += stat_growth.get('int', 0)
+                hero.base_vit += stat_growth.get('vit', 0)
+                hero.base_luk += stat_growth.get('luk', 0)
+                
+                # Recalculate max HP and heal to full
+                total_vit = hero.base_vit + hero_class.vit_bonus
+                max_hp = 20 + 4 * total_vit
+                hero.current_hp = max_hp
+        else:
+            break
+    
+    return await update_hero(session, hero)
