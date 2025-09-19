@@ -1,5 +1,5 @@
 """
-Initialize monster classes in the database.
+Initialize monster classes in the database from JSON configuration.
 """
 
 import logging
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 async def init_monster_classes():
-    """Initialize all monster classes in the database."""
+    """Initialize all monster classes in the database from JSON configuration."""
     async for session in get_db_session():
         try:
             # Check if classes already exist
@@ -19,7 +19,7 @@ async def init_monster_classes():
                 logger.info(f"Monster classes already exist: {[c.name for c in existing_classes]}")
                 return existing_classes
             
-            # Create all monster classes
+            # Load and create all monster classes from JSON
             classes_data = MonsterClasses.get_all_classes()
             created_classes = []
             
@@ -40,7 +40,7 @@ async def init_monster_classes():
                 created_classes.append(monster_class)
                 logger.info(f"Created monster class: {monster_class.name}")
             
-            logger.info(f"Successfully initialized {len(created_classes)} monster classes")
+            logger.info(f"Successfully initialized {len(created_classes)} monster classes from JSON configuration")
             return created_classes
             
         except Exception as e:

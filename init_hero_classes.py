@@ -1,5 +1,5 @@
 """
-Initialize hero classes in the database.
+Initialize hero classes in the database from JSON configuration.
 """
 
 import logging
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 async def init_hero_classes():
-    """Initialize all hero classes in the database."""
+    """Initialize all hero classes in the database from JSON configuration."""
     async for session in get_db_session():
         try:
             # Check if classes already exist
@@ -19,7 +19,7 @@ async def init_hero_classes():
                 logger.info(f"Hero classes already exist: {[c.name for c in existing_classes]}")
                 return existing_classes
             
-            # Create all hero classes
+            # Load and create all hero classes from JSON
             classes_data = HeroClasses.get_all_classes()
             created_classes = []
             
@@ -38,7 +38,7 @@ async def init_hero_classes():
                 created_classes.append(hero_class)
                 logger.info(f"Created hero class: {hero_class.name}")
             
-            logger.info(f"Successfully initialized {len(created_classes)} hero classes")
+            logger.info(f"Successfully initialized {len(created_classes)} hero classes from JSON configuration")
             return created_classes
             
         except Exception as e:

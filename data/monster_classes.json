@@ -1,0 +1,148 @@
+{
+  "monster_classes": [
+    {
+      "name": "Гоблін",
+      "description": "Невеликий гуманоїдний монстр. Слабкий, але швидкий і спритний.",
+      "monster_type": "humanoid",
+      "difficulty": "easy",
+      "base_str": 4,
+      "base_agi": 7,
+      "base_int": 3,
+      "base_vit": 5,
+      "base_luk": 6,
+      "stat_growth": {
+        "str": 0,
+        "agi": 1,
+        "int": 0,
+        "vit": 0,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Вовк",
+      "description": "Дикий хижак з гострими зубами та кігтями. Швидкий і агресивний.",
+      "monster_type": "beast",
+      "difficulty": "easy",
+      "base_str": 6,
+      "base_agi": 8,
+      "base_int": 2,
+      "base_vit": 6,
+      "base_luk": 3,
+      "stat_growth": {
+        "str": 1,
+        "agi": 1,
+        "int": 0,
+        "vit": 0,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Скелет",
+      "description": "Нежить, що складається з кісток. Повільний, але міцний.",
+      "monster_type": "undead",
+      "difficulty": "normal",
+      "base_str": 7,
+      "base_agi": 3,
+      "base_int": 4,
+      "base_vit": 8,
+      "base_luk": 2,
+      "stat_growth": {
+        "str": 1,
+        "agi": 0,
+        "int": 0,
+        "vit": 1,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Орк",
+      "description": "Великий гуманоїдний воїн. Сильний і витривалий, але повільний.",
+      "monster_type": "humanoid",
+      "difficulty": "normal",
+      "base_str": 9,
+      "base_agi": 4,
+      "base_int": 3,
+      "base_vit": 8,
+      "base_luk": 1,
+      "stat_growth": {
+        "str": 1,
+        "agi": 0,
+        "int": 0,
+        "vit": 1,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Вогняний Елементаль",
+      "description": "Жива сутність з чистого вогню. Використовує магію для атаки.",
+      "monster_type": "elemental",
+      "difficulty": "hard",
+      "base_str": 5,
+      "base_agi": 6,
+      "base_int": 10,
+      "base_vit": 7,
+      "base_luk": 4,
+      "stat_growth": {
+        "str": 0,
+        "agi": 0,
+        "int": 2,
+        "vit": 1,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Менший Демон",
+      "description": "Демонічна сутність з пекла. Поєднує фізичну силу з магією.",
+      "monster_type": "demon",
+      "difficulty": "hard",
+      "base_str": 8,
+      "base_agi": 7,
+      "base_int": 8,
+      "base_vit": 9,
+      "base_luk": 5,
+      "stat_growth": {
+        "str": 1,
+        "agi": 1,
+        "int": 1,
+        "vit": 1,
+        "luk": 0
+      }
+    },
+    {
+      "name": "Молодий Дракон",
+      "description": "Могутній дракон, що поєднує фізичну силу, магію та витривалість.",
+      "monster_type": "beast",
+      "difficulty": "boss",
+      "base_str": 12,
+      "base_agi": 8,
+      "base_int": 10,
+      "base_vit": 15,
+      "base_luk": 6,
+      "stat_growth": {
+        "str": 2,
+        "agi": 1,
+        "int": 1,
+        "vit": 2,
+        "luk": 1
+      }
+    },
+    {
+      "name": "Ліч",
+      "description": "Могутній некромант, що поєднує магію з незнищенністю нежиті.",
+      "monster_type": "undead",
+      "difficulty": "boss",
+      "base_str": 6,
+      "base_agi": 5,
+      "base_int": 15,
+      "base_vit": 12,
+      "base_luk": 8,
+      "stat_growth": {
+        "str": 0,
+        "agi": 0,
+        "int": 3,
+        "vit": 2,
+        "luk": 1
+      }
+    }
+  ]
+}

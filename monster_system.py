@@ -246,146 +246,54 @@ class MonsterCalculator:
 
 
 class MonsterClasses:
-    """Predefined monster classes with their stats and growth."""
+    """Monster classes loaded from JSON configuration."""
     
-    @staticmethod
-    def get_goblin_data() -> Dict[str, Any]:
-        """Goblin class data: Easy humanoid monster."""
-        return {
-            'name': 'Гоблін',
-            'description': 'Невеликий гуманоїдний монстр. Слабкий, але швидкий і спритний.',
-            'monster_type': 'humanoid',
-            'difficulty': 'easy',
-            'base_str': 4,
-            'base_agi': 7,
-            'base_int': 3,
-            'base_vit': 5,
-            'base_luk': 6,
-            'stat_growth': '{"str": 0, "agi": 1, "int": 0, "vit": 0, "luk": 0}'
-        }
+    _classes_data = None
     
-    @staticmethod
-    def get_wolf_data() -> Dict[str, Any]:
-        """Wolf class data: Easy beast monster."""
-        return {
-            'name': 'Вовк',
-            'description': 'Дикий хижак з гострими зубами та кігтями. Швидкий і агресивний.',
-            'monster_type': 'beast',
-            'difficulty': 'easy',
-            'base_str': 6,
-            'base_agi': 8,
-            'base_int': 2,
-            'base_vit': 6,
-            'base_luk': 3,
-            'stat_growth': '{"str": 1, "agi": 1, "int": 0, "vit": 0, "luk": 0}'
-        }
+    @classmethod
+    def _load_classes_data(cls) -> list[Dict[str, Any]]:
+        """Load monster classes data from JSON file."""
+        if cls._classes_data is None:
+            import os
+            import json
+            
+            # Get the directory of the current file
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            json_file_path = os.path.join(current_dir, 'data', 'monster_classes.json')
+            
+            try:
+                with open(json_file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    cls._classes_data = data['monster_classes']
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Monster classes JSON file not found at {json_file_path}")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in monster classes file: {e}")
+        
+        return cls._classes_data
     
-    @staticmethod
-    def get_skeleton_data() -> Dict[str, Any]:
-        """Skeleton class data: Normal undead monster."""
-        return {
-            'name': 'Скелет',
-            'description': 'Нежить, що складається з кісток. Повільний, але міцний.',
-            'monster_type': 'undead',
-            'difficulty': 'normal',
-            'base_str': 7,
-            'base_agi': 3,
-            'base_int': 4,
-            'base_vit': 8,
-            'base_luk': 2,
-            'stat_growth': '{"str": 1, "agi": 0, "int": 0, "vit": 1, "luk": 0}'
-        }
+    @classmethod
+    def get_all_classes(cls) -> list[Dict[str, Any]]:
+        """Get all monster classes data from JSON file."""
+        classes_data = cls._load_classes_data()
+        
+        # Convert stat_growth dict to JSON string for compatibility
+        for class_data in classes_data:
+            if isinstance(class_data['stat_growth'], dict):
+                class_data['stat_growth'] = json.dumps(class_data['stat_growth'])
+        
+        return classes_data
     
-    @staticmethod
-    def get_orc_data() -> Dict[str, Any]:
-        """Orc class data: Normal humanoid monster."""
-        return {
-            'name': 'Орк',
-            'description': 'Великий гуманоїдний воїн. Сильний і витривалий, але повільний.',
-            'monster_type': 'humanoid',
-            'difficulty': 'normal',
-            'base_str': 9,
-            'base_agi': 4,
-            'base_int': 3,
-            'base_vit': 8,
-            'base_luk': 1,
-            'stat_growth': '{"str": 1, "agi": 0, "int": 0, "vit": 1, "luk": 0}'
-        }
-    
-    @staticmethod
-    def get_fire_elemental_data() -> Dict[str, Any]:
-        """Fire Elemental class data: Hard elemental monster."""
-        return {
-            'name': 'Вогняний Елементаль',
-            'description': 'Жива сутність з чистого вогню. Використовує магію для атаки.',
-            'monster_type': 'elemental',
-            'difficulty': 'hard',
-            'base_str': 5,
-            'base_agi': 6,
-            'base_int': 10,
-            'base_vit': 7,
-            'base_luk': 4,
-            'stat_growth': '{"str": 0, "agi": 0, "int": 2, "vit": 1, "luk": 0}'
-        }
-    
-    @staticmethod
-    def get_demon_data() -> Dict[str, Any]:
-        """Demon class data: Hard demon monster."""
-        return {
-            'name': 'Менший Демон',
-            'description': 'Демонічна сутність з пекла. Поєднує фізичну силу з магією.',
-            'monster_type': 'demon',
-            'difficulty': 'hard',
-            'base_str': 8,
-            'base_agi': 7,
-            'base_int': 8,
-            'base_vit': 9,
-            'base_luk': 5,
-            'stat_growth': '{"str": 1, "agi": 1, "int": 1, "vit": 1, "luk": 0}'
-        }
-    
-    @staticmethod
-    def get_dragon_data() -> Dict[str, Any]:
-        """Dragon class data: Boss monster."""
-        return {
-            'name': 'Молодий Дракон',
-            'description': 'Могутній дракон, що поєднує фізичну силу, магію та витривалість.',
-            'monster_type': 'beast',
-            'difficulty': 'boss',
-            'base_str': 12,
-            'base_agi': 8,
-            'base_int': 10,
-            'base_vit': 15,
-            'base_luk': 6,
-            'stat_growth': '{"str": 2, "agi": 1, "int": 1, "vit": 2, "luk": 1}'
-        }
-    
-    @staticmethod
-    def get_lich_data() -> Dict[str, Any]:
-        """Lich class data: Boss undead monster."""
-        return {
-            'name': 'Ліч',
-            'description': 'Могутній некромант, що поєднує магію з незнищенністю нежиті.',
-            'monster_type': 'undead',
-            'difficulty': 'boss',
-            'base_str': 6,
-            'base_agi': 5,
-            'base_int': 15,
-            'base_vit': 12,
-            'base_luk': 8,
-            'stat_growth': '{"str": 0, "agi": 0, "int": 3, "vit": 2, "luk": 1}'
-        }
-    
-    @staticmethod
-    def get_all_classes() -> list[Dict[str, Any]]:
-        """Get all monster classes data."""
-        return [
-            MonsterClasses.get_goblin_data(),
-            MonsterClasses.get_wolf_data(),
-            MonsterClasses.get_skeleton_data(),
-            MonsterClasses.get_orc_data(),
-            MonsterClasses.get_fire_elemental_data(),
-            MonsterClasses.get_demon_data(),
-            MonsterClasses.get_dragon_data(),
-            MonsterClasses.get_lich_data()
-        ]
+    @classmethod
+    def get_class_by_name(cls, name: str) -> Optional[Dict[str, Any]]:
+        """Get monster class data by name."""
+        classes_data = cls._load_classes_data()
+        
+        for class_data in classes_data:
+            if class_data['name'] == name:
+                # Convert stat_growth dict to JSON string for compatibility
+                if isinstance(class_data['stat_growth'], dict):
+                    class_data['stat_growth'] = json.dumps(class_data['stat_growth'])
+                return class_data
+        
+        return None
