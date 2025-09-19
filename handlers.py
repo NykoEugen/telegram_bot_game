@@ -72,7 +72,8 @@ async def cmd_help(message: Message):
         f"/info - Show user information\n"
         f"/ping - Test bot responsiveness\n"
         f"/time - Show current time\n\n"
-        f"{hbold('Quest Commands:')}\n"
+        f"{hbold('RPG Commands:')}\n"
+        f"/town - Enter the starting village\n"
         f"/quests - Show available quests\n"
         f"/quest &lt;id&gt; - Start a specific quest"
     )
@@ -155,8 +156,10 @@ def register_handlers(dp: Dispatcher):
     """Register all handlers with the dispatcher."""
     from quest_handlers import register_quest_handlers
     from graph_quest_handlers import register_graph_quest_handlers
+    from town_handlers import register_town_handlers
     
     dp.include_router(router)
     register_quest_handlers(dp)
     register_graph_quest_handlers(dp)
+    register_town_handlers(dp)
     logger.info("All handlers registered successfully")

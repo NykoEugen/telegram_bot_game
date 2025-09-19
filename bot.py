@@ -43,6 +43,15 @@ async def on_startup(app: web.Application):
         logger.info("Graph quests initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize graph quests: {e}")
+    
+    # Initialize towns
+    try:
+        from init_town import create_starting_village, create_additional_towns
+        await create_starting_village()
+        await create_additional_towns()
+        logger.info("Towns initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize towns: {e}")
 
 
 async def on_shutdown(app: web.Application):

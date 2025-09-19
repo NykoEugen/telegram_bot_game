@@ -404,16 +404,11 @@ async def handle_graph_quest_choice(callback: CallbackQuery):
     connection_used = result['connection_used']
     
     if result.get('completed'):
-        # Quest completed
-        quest_text = (
-            f"{hbold('🎉 Quest Completed!')}\n\n"
-            f"{hbold(quest.title)}\n\n"
-            f"{hbold(current_node.title)}\n"
-            f"{current_node.description}\n\n"
-            f"Congratulations! You have completed this quest."
-        )
-        
-        keyboard = GraphQuestKeyboardBuilder.graph_quest_completion_keyboard(quest.id)
+        # Quest completed - show rewards screen
+        # Import here to avoid circular imports
+        from town_handlers import show_quest_rewards
+        await show_quest_rewards(callback, quest.title, current_node.description)
+        return
     else:
         # Continue quest
         quest_text = (
