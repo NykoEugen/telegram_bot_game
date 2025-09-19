@@ -83,6 +83,62 @@ class QuestProgress(Base):
         return f"<QuestProgress(user_id={self.user_id}, quest_id={self.quest_id}, status={self.status})>"
 
 
+# Graph-based quest models
+class GraphQuestNode(Base):
+    """Enhanced quest node model for graph-based quests."""
+    __tablename__ = "graph_quest_nodes"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quest_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    node_type: Mapped[str] = mapped_column(nullable=False)  # 'start', 'choice', 'action', 'end', 'condition'
+    title: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str] = mapped_column(nullable=False)
+    node_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for node-specific info
+    is_final: Mapped[bool] = mapped_column(default=False)
+    is_start: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<GraphQuestNode(id={self.id}, quest_id={self.quest_id}, type={self.node_type})>"
+
+
+class GraphQuestConnection(Base):
+    """Model for connections between quest nodes in graph structure."""
+    __tablename__ = "graph_quest_connections"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_node_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    to_node_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    connection_type: Mapped[str] = mapped_column(nullable=False)  # 'choice', 'condition', 'default'
+    choice_text: Mapped[Optional[str]] = mapped_column(nullable=True)  # Text for choice buttons
+    condition_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for conditions
+    order: Mapped[int] = mapped_column(default=0)  # Order of choices/connections
+    
+    def __repr__(self):
+        return f"<GraphQuestConnection(from={self.from_node_id}, to={self.to_node_id}, type={self.connection_type})>"
+
+
+class GraphQuestProgress(Base):
+    """Enhanced quest progress model for graph-based quests."""
+    __tablename__ = "graph_quest_progress"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'quest_id', name='uq_graph_user_quest'),
+    )
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    quest_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    current_node_id: Mapped[int] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(nullable=False)  # 'active', 'completed', 'declined', 'paused'
+    started_at: Mapped[str] = mapped_column(nullable=False)
+    completed_at: Mapped[Optional[str]] = mapped_column(nullable=True)
+    visited_nodes: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON array of visited node IDs
+    quest_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for quest state
+    
+    def __repr__(self):
+        return f"<GraphQuestProgress(user_id={self.user_id}, quest_id={self.quest_id}, status={self.status})>"
+
+
 # Database setup
 if Config.DATABASE_URL.startswith("sqlite"):
     # For SQLite, use synchronous engine for migrations
@@ -338,3 +394,486 @@ async def get_active_quests(session: AsyncSession) -> list[Quest]:
         select(Quest).where(Quest.is_active == True)
     )
     return list(result.scalars().all())
+
+
+# Graph-based quest database functions
+async def create_graph_quest_node(
+    session: AsyncSession,
+    quest_id: int,
+    node_type: str,
+    title: str,
+    description: str,
+    node_data: Optional[str] = None,
+    is_final: bool = False,
+    is_start: bool = False
+) -> GraphQuestNode:
+    """Create a new graph quest node."""
+    from datetime import datetime
+    
+    node = GraphQuestNode(
+        quest_id=quest_id,
+        node_type=node_type,
+        title=title,
+        description=description,
+        node_data=node_data,
+        is_final=is_final,
+        is_start=is_start,
+        created_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(node)
+    await session.commit()
+    await session.refresh(node)
+    
+    return node
+
+
+async def create_graph_quest_connection(
+    session: AsyncSession,
+    from_node_id: int,
+    to_node_id: int,
+    connection_type: str,
+    choice_text: Optional[str] = None,
+    condition_data: Optional[str] = None,
+    order: int = 0
+) -> GraphQuestConnection:
+    """Create a connection between two quest nodes."""
+    connection = GraphQuestConnection(
+        from_node_id=from_node_id,
+        to_node_id=to_node_id,
+        connection_type=connection_type,
+        choice_text=choice_text,
+        condition_data=condition_data,
+        order=order
+    )
+    
+    session.add(connection)
+    await session.commit()
+    await session.refresh(connection)
+    
+    return connection
+
+
+async def get_graph_quest_node_by_id(session: AsyncSession, node_id: int) -> Optional[GraphQuestNode]:
+    """Get graph quest node by ID."""
+    result = await session.execute(
+        select(GraphQuestNode).where(GraphQuestNode.id == node_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_graph_quest_start_node(session: AsyncSession, quest_id: int) -> Optional[GraphQuestNode]:
+    """Get the start node of a graph quest."""
+    result = await session.execute(
+        select(GraphQuestNode).where(
+            GraphQuestNode.quest_id == quest_id,
+            GraphQuestNode.is_start == True
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_graph_quest_connections(session: AsyncSession, from_node_id: int) -> list[GraphQuestConnection]:
+    """Get all connections from a specific node."""
+    result = await session.execute(
+        select(GraphQuestConnection).where(
+            GraphQuestConnection.from_node_id == from_node_id
+        ).order_by(GraphQuestConnection.order)
+    )
+    return list(result.scalars().all())
+
+
+async def get_graph_quest_nodes(session: AsyncSession, quest_id: int) -> list[GraphQuestNode]:
+    """Get all nodes for a specific quest."""
+    result = await session.execute(
+        select(GraphQuestNode).where(GraphQuestNode.quest_id == quest_id)
+    )
+    return list(result.scalars().all())
+
+
+async def create_graph_quest_progress(
+    session: AsyncSession,
+    user_id: int,
+    quest_id: int,
+    current_node_id: int,
+    quest_data: Optional[str] = None
+) -> GraphQuestProgress:
+    """Create graph quest progress for a user."""
+    from datetime import datetime
+    import json
+    
+    # Check if progress already exists
+    existing_progress = await get_user_graph_quest_progress(session, user_id, quest_id)
+    if existing_progress:
+        # Update existing progress
+        existing_progress.current_node_id = current_node_id
+        existing_progress.status = 'active'
+        existing_progress.started_at = datetime.utcnow().isoformat()
+        existing_progress.completed_at = None
+        existing_progress.quest_data = quest_data
+        
+        session.add(existing_progress)
+        await session.commit()
+        await session.refresh(existing_progress)
+        
+        return existing_progress
+    
+    progress = GraphQuestProgress(
+        user_id=user_id,
+        quest_id=quest_id,
+        current_node_id=current_node_id,
+        status='active',
+        started_at=datetime.utcnow().isoformat(),
+        visited_nodes=json.dumps([current_node_id]),
+        quest_data=quest_data
+    )
+    
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    
+    return progress
+
+
+async def get_user_graph_quest_progress(
+    session: AsyncSession,
+    user_id: int,
+    quest_id: int
+) -> Optional[GraphQuestProgress]:
+    """Get user's graph quest progress."""
+    result = await session.execute(
+        select(GraphQuestProgress).where(
+            GraphQuestProgress.user_id == user_id,
+            GraphQuestProgress.quest_id == quest_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_graph_quest_progress(
+    session: AsyncSession,
+    progress: GraphQuestProgress,
+    current_node_id: Optional[int] = None,
+    status: Optional[str] = None,
+    quest_data: Optional[str] = None
+) -> GraphQuestProgress:
+    """Update graph quest progress."""
+    import json
+    
+    if current_node_id is not None:
+        progress.current_node_id = current_node_id
+        
+        # Update visited nodes
+        visited_nodes = json.loads(progress.visited_nodes or "[]")
+        if current_node_id not in visited_nodes:
+            visited_nodes.append(current_node_id)
+        progress.visited_nodes = json.dumps(visited_nodes)
+    
+    if status is not None:
+        progress.status = status
+        if status in ['completed', 'declined']:
+            from datetime import datetime
+            progress.completed_at = datetime.utcnow().isoformat()
+    
+    if quest_data is not None:
+        progress.quest_data = quest_data
+    
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    
+    return progress
+
+
+async def get_graph_quest_by_id(session: AsyncSession, quest_id: int) -> Optional[Quest]:
+    """Get quest by ID (works for both regular and graph quests)."""
+    result = await session.execute(
+        select(Quest).where(Quest.id == quest_id)
+    )
+    return result.scalar_one_or_none()
+
+
+# Town/Location system models
+class Town(Base):
+    """Town model for storing town/location information."""
+    __tablename__ = "towns"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str] = mapped_column(nullable=False)
+    town_type: Mapped[str] = mapped_column(nullable=False)  # 'village', 'city', 'outpost', etc.
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<Town(id={self.id}, name={self.name}, type={self.town_type})>"
+
+
+class TownNode(Base):
+    """Town node model for storing town locations/buildings."""
+    __tablename__ = "town_nodes"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    town_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    node_type: Mapped[str] = mapped_column(nullable=False)  # 'guild', 'barracks', 'square', 'inn', etc.
+    name: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str] = mapped_column(nullable=False)
+    node_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for node-specific info
+    is_accessible: Mapped[bool] = mapped_column(default=True)
+    required_level: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<TownNode(id={self.id}, town_id={self.town_id}, type={self.node_type}, name={self.name})>"
+
+
+class TownConnection(Base):
+    """Model for connections between town nodes."""
+    __tablename__ = "town_connections"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    from_node_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    to_node_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    connection_type: Mapped[str] = mapped_column(nullable=False)  # 'walk', 'teleport', 'secret', etc.
+    is_bidirectional: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<TownConnection(from={self.from_node_id}, to={self.to_node_id}, type={self.connection_type})>"
+
+
+class UserTownProgress(Base):
+    """Model for tracking user progress in towns."""
+    __tablename__ = "user_town_progress"
+    __table_args__ = (
+        UniqueConstraint('user_id', 'town_id', name='uq_user_town'),
+    )
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    town_id: Mapped[int] = mapped_column(nullable=False, index=True)
+    current_node_id: Mapped[int] = mapped_column(nullable=False)
+    visited_nodes: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON array of visited node IDs
+    town_data: Mapped[Optional[str]] = mapped_column(nullable=True)  # JSON data for town state
+    first_visited_at: Mapped[str] = mapped_column(nullable=False)
+    last_visited_at: Mapped[str] = mapped_column(nullable=False)
+    
+    def __repr__(self):
+        return f"<UserTownProgress(user_id={self.user_id}, town_id={self.town_id}, current_node={self.current_node_id})>"
+
+
+# Town-related database functions
+async def create_town(
+    session: AsyncSession,
+    name: str,
+    description: str,
+    town_type: str = "village"
+) -> Town:
+    """Create a new town."""
+    from datetime import datetime
+    
+    town = Town(
+        name=name,
+        description=description,
+        town_type=town_type,
+        is_active=True,
+        created_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(town)
+    await session.commit()
+    await session.refresh(town)
+    
+    return town
+
+
+async def create_town_node(
+    session: AsyncSession,
+    town_id: int,
+    node_type: str,
+    name: str,
+    description: str,
+    node_data: Optional[str] = None,
+    required_level: int = 1
+) -> TownNode:
+    """Create a new town node."""
+    from datetime import datetime
+    
+    node = TownNode(
+        town_id=town_id,
+        node_type=node_type,
+        name=name,
+        description=description,
+        node_data=node_data,
+        is_accessible=True,
+        required_level=required_level,
+        created_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(node)
+    await session.commit()
+    await session.refresh(node)
+    
+    return node
+
+
+async def create_town_connection(
+    session: AsyncSession,
+    from_node_id: int,
+    to_node_id: int,
+    connection_type: str = "walk",
+    is_bidirectional: bool = True
+) -> TownConnection:
+    """Create a connection between two town nodes."""
+    from datetime import datetime
+    
+    connection = TownConnection(
+        from_node_id=from_node_id,
+        to_node_id=to_node_id,
+        connection_type=connection_type,
+        is_bidirectional=is_bidirectional,
+        created_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(connection)
+    await session.commit()
+    await session.refresh(connection)
+    
+    return connection
+
+
+async def get_town_by_id(session: AsyncSession, town_id: int) -> Optional[Town]:
+    """Get town by ID."""
+    result = await session.execute(
+        select(Town).where(Town.id == town_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_town_node_by_id(session: AsyncSession, node_id: int) -> Optional[TownNode]:
+    """Get town node by ID."""
+    result = await session.execute(
+        select(TownNode).where(TownNode.id == node_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_town_nodes(session: AsyncSession, town_id: int) -> list[TownNode]:
+    """Get all nodes for a specific town."""
+    result = await session.execute(
+        select(TownNode).where(TownNode.town_id == town_id)
+    )
+    return list(result.scalars().all())
+
+
+async def get_town_connections(session: AsyncSession, from_node_id: int) -> list[TownConnection]:
+    """Get all connections from a specific town node."""
+    result = await session.execute(
+        select(TownConnection).where(TownConnection.from_node_id == from_node_id)
+    )
+    return list(result.scalars().all())
+
+
+async def get_town_connections_bidirectional(session: AsyncSession, node_id: int) -> list[TownConnection]:
+    """Get all connections to/from a specific town node (bidirectional)."""
+    result = await session.execute(
+        select(TownConnection).where(
+            (TownConnection.from_node_id == node_id) |
+            (TownConnection.to_node_id == node_id)
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def create_user_town_progress(
+    session: AsyncSession,
+    user_id: int,
+    town_id: int,
+    current_node_id: int,
+    town_data: Optional[str] = None
+) -> UserTownProgress:
+    """Create or update user town progress."""
+    from datetime import datetime
+    import json
+    
+    # Check if progress already exists
+    existing_progress = await get_user_town_progress(session, user_id, town_id)
+    if existing_progress:
+        # Update existing progress
+        existing_progress.current_node_id = current_node_id
+        existing_progress.last_visited_at = datetime.utcnow().isoformat()
+        existing_progress.town_data = town_data
+        
+        # Update visited nodes
+        visited_nodes = json.loads(existing_progress.visited_nodes or "[]")
+        if current_node_id not in visited_nodes:
+            visited_nodes.append(current_node_id)
+        existing_progress.visited_nodes = json.dumps(visited_nodes)
+        
+        session.add(existing_progress)
+        await session.commit()
+        await session.refresh(existing_progress)
+        
+        return existing_progress
+    
+    # Create new progress
+    progress = UserTownProgress(
+        user_id=user_id,
+        town_id=town_id,
+        current_node_id=current_node_id,
+        visited_nodes=json.dumps([current_node_id]),
+        town_data=town_data,
+        first_visited_at=datetime.utcnow().isoformat(),
+        last_visited_at=datetime.utcnow().isoformat()
+    )
+    
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    
+    return progress
+
+
+async def get_user_town_progress(
+    session: AsyncSession,
+    user_id: int,
+    town_id: int
+) -> Optional[UserTownProgress]:
+    """Get user's town progress."""
+    result = await session.execute(
+        select(UserTownProgress).where(
+            UserTownProgress.user_id == user_id,
+            UserTownProgress.town_id == town_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_user_town_progress(
+    session: AsyncSession,
+    progress: UserTownProgress,
+    current_node_id: Optional[int] = None,
+    town_data: Optional[str] = None
+) -> UserTownProgress:
+    """Update user town progress."""
+    from datetime import datetime
+    import json
+    
+    if current_node_id is not None:
+        progress.current_node_id = current_node_id
+        progress.last_visited_at = datetime.utcnow().isoformat()
+        
+        # Update visited nodes
+        visited_nodes = json.loads(progress.visited_nodes or "[]")
+        if current_node_id not in visited_nodes:
+            visited_nodes.append(current_node_id)
+        progress.visited_nodes = json.dumps(visited_nodes)
+    
+    if town_data is not None:
+        progress.town_data = town_data
+    
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    
+    return progress
