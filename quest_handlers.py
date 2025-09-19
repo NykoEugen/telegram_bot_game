@@ -175,7 +175,9 @@ async def cmd_quests(message: Message):
                 'title': quest.title
             })
         
-        keyboard = QuestKeyboardBuilder.quest_list_keyboard(quest_list)
+        # Use GraphQuestKeyboardBuilder for all quests
+        from keyboards import GraphQuestKeyboardBuilder
+        keyboard = GraphQuestKeyboardBuilder.graph_quest_list_keyboard(quest_list)
         
         quest_text = f"{hbold('Available Quests')}\n\n"
         for quest in quests:
@@ -205,7 +207,7 @@ async def cmd_quest(message: Message):
     user_id = message.from_user.id
     
     # Try to start as graph quest first (for quests with ID >= 2)
-    if quest_id >= 2:
+    if quest_id >= 1:
         from graph_quest_handlers import GraphQuestManager
         from keyboards import GraphQuestKeyboardBuilder
         
@@ -231,27 +233,8 @@ async def cmd_quest(message: Message):
             await message.answer(quest_text, reply_markup=keyboard)
             return
     
-    # Fall back to regular quest for quest ID 1
-    quest_data = await QuestManager.start_quest(user_id, quest_id)
-    
-    if not quest_data:
-        await message.answer("Quest not found or you cannot start this quest.")
-        return
-    
-    quest = quest_data['quest']
-    current_node = quest_data['current_node']
-    
-    # Send quest start message
-    quest_text = (
-        f"{hbold('🎯 Quest Started!')}\n\n"
-        f"{hbold(quest.title)}\n\n"
-        f"{hbold(current_node.title)}\n"
-        f"{current_node.description}\n\n"
-        f"What will you do?"
-    )
-    
-    keyboard = QuestKeyboardBuilder.quest_choice_keyboard(quest.id, current_node.id)
-    await message.answer(quest_text, reply_markup=keyboard)
+    # Fall back to regular quest system for other quests
+    await message.answer("This quest type is not yet supported. Please use graph quests (ID >= 1).")
 
 
 # Quest callback handlers
@@ -262,7 +245,7 @@ async def handle_quest_start(callback: CallbackQuery):
     user_id = callback.from_user.id
     
     # Try to start as graph quest first (for quests with ID >= 2)
-    if quest_id >= 2:
+    if quest_id >= 1:
         from graph_quest_handlers import GraphQuestManager
         from keyboards import GraphQuestKeyboardBuilder
         

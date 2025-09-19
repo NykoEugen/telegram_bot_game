@@ -1218,6 +1218,29 @@ async def get_monster_classes_by_difficulty(session: AsyncSession, difficulty: s
     return list(result.scalars().all())
 
 
+async def get_monster_classes_by_criteria(
+    session: AsyncSession, 
+    monster_types: Optional[list[str]] = None,
+    difficulty: Optional[str] = None
+) -> list[MonsterClass]:
+    """Get monster classes by multiple criteria."""
+    query = select(MonsterClass)
+    
+    conditions = []
+    
+    if monster_types:
+        conditions.append(MonsterClass.monster_type.in_(monster_types))
+    
+    if difficulty:
+        conditions.append(MonsterClass.difficulty == difficulty)
+    
+    if conditions:
+        query = query.where(*conditions)
+    
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
 async def create_monster(
     session: AsyncSession,
     monster_class_id: int,

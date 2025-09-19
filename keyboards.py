@@ -276,6 +276,38 @@ class GraphQuestKeyboardBuilder:
         return builder.as_markup()
     
     @staticmethod
+    def encounter_keyboard(quest_id: int, node_id: int, encounter) -> InlineKeyboardMarkup:
+        """
+        Create keyboard for encounter options.
+        
+        Args:
+            quest_id: ID of the quest
+            node_id: ID of the current quest node
+            encounter: EncounterResult object
+            
+        Returns:
+            InlineKeyboardMarkup with encounter options
+        """
+        builder = InlineKeyboardBuilder()
+        
+        # Fight button
+        builder.button(
+            text="⚔️ Fight",
+            callback_data=f"encounter_combat:{quest_id}:{node_id}"
+        )
+        
+        # Flee button
+        builder.button(
+            text="🏃 Flee",
+            callback_data=f"encounter_flee:{quest_id}:{node_id}"
+        )
+        
+        # Adjust layout
+        builder.adjust(2)
+        
+        return builder.as_markup()
+    
+    @staticmethod
     def graph_quest_list_keyboard(quests: List[dict]) -> InlineKeyboardMarkup:
         """
         Create keyboard for listing available graph quests.
@@ -709,3 +741,118 @@ class TownKeyboardBuilder:
         builder.adjust(2)
         
         return builder.as_markup()
+
+
+class CombatKeyboardBuilder:
+    """Custom keyboard builder for combat interactions."""
+    
+    @staticmethod
+    def combat_action_keyboard() -> InlineKeyboardMarkup:
+        """
+        Create keyboard with combat action buttons.
+        
+        Returns:
+            InlineKeyboardMarkup with combat action buttons
+        """
+        builder = InlineKeyboardBuilder()
+        
+        # Attack button
+        builder.button(
+            text="⚔️ Attack",
+            callback_data="combat_attack"
+        )
+        
+        # Magic button
+        builder.button(
+            text="🔮 Magic",
+            callback_data="combat_magic"
+        )
+        
+        # Defend button
+        builder.button(
+            text="🛡️ Defend",
+            callback_data="combat_defend"
+        )
+        
+        # Flee button
+        builder.button(
+            text="🏃 Flee",
+            callback_data="combat_flee"
+        )
+        
+        # Adjust layout to 2 buttons per row
+        builder.adjust(2, 2)
+        
+        return builder.as_markup()
+    
+    @staticmethod
+    def combat_status_keyboard() -> InlineKeyboardMarkup:
+        """
+        Create keyboard for combat status display.
+        
+        Returns:
+            InlineKeyboardMarkup with status options
+        """
+        builder = InlineKeyboardBuilder()
+        
+        # Combat status button
+        builder.button(
+            text="📊 Combat Status",
+            callback_data="combat_status"
+        )
+        
+        # End combat button
+        builder.button(
+            text="❌ End Combat",
+            callback_data="combat_end"
+        )
+        
+        # Adjust layout
+        builder.adjust(1)
+        
+        return builder.as_markup()
+
+
+# Convenience functions for easy access
+def get_combat_keyboard() -> InlineKeyboardMarkup:
+    """Get combat action keyboard."""
+    return CombatKeyboardBuilder.combat_action_keyboard()
+
+
+def get_combat_status_keyboard() -> InlineKeyboardMarkup:
+    """Get combat status keyboard."""
+    return CombatKeyboardBuilder.combat_status_keyboard()
+
+
+def get_main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Get main menu keyboard."""
+    builder = InlineKeyboardBuilder()
+    
+    # Hero stats button
+    builder.button(
+        text="👤 Hero Stats",
+        callback_data="hero_stats"
+    )
+    
+    # Start fight button
+    builder.button(
+        text="⚔️ Start Fight",
+        callback_data="start_fight"
+    )
+    
+    # Quests button
+    builder.button(
+        text="🎯 Quests",
+        callback_data="quest_list"
+    )
+    
+    # Towns button
+    builder.button(
+        text="🏘️ Towns",
+        callback_data="town_list"
+    )
+    
+    # Adjust layout to 2 buttons per row
+    builder.adjust(2, 2)
+    
+    return builder.as_markup()

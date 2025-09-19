@@ -26,6 +26,7 @@ from database import (
     GraphQuestProgress
 )
 from keyboards import GraphQuestKeyboardBuilder
+from encounter_handlers import EncounterManager
 
 logger = logging.getLogger(__name__)
 
@@ -150,13 +151,33 @@ class GraphQuestManager:
             if completed:
                 await update_graph_quest_progress(session, progress, status='completed')
             
+            # Check for encounters in the new node
+            encounter = None
+            if next_node.node_data:
+                try:
+                    import json
+                    node_data = json.loads(next_node.node_data)
+                    encounter_tags = node_data.get('encounter_tags')
+                    if encounter_tags:
+                        encounter = await EncounterManager.trigger_encounter(
+                            user_id, 
+                            {
+                                'id': next_node.id,
+                                'quest_id': quest_id,
+                                'encounter_tags': encounter_tags
+                            }
+                        )
+                except (json.JSONDecodeError, KeyError):
+                    pass
+            
             return {
                 'quest': await get_graph_quest_by_id(session, quest_id),
                 'current_node': next_node,
                 'connections': next_connections,
                 'progress': progress,
                 'completed': completed,
-                'connection_used': target_connection
+                'connection_used': target_connection,
+                'encounter': encounter
             }
     
     @staticmethod
@@ -211,88 +232,7 @@ class GraphQuestManager:
             return map_data
 
 
-# Graph Quest command handlers
-@graph_quest_router.message(Command("graph_quests"))
-async def cmd_graph_quests(message: Message):
-    """Show available graph quests."""
-    async with AsyncSessionLocal() as session:
-        quests = await get_active_quests(session)
-        
-        if not quests:
-            await message.answer(
-                f"{hbold('Available Graph Quests')}\n\n"
-                f"No quests are currently available. Check back later!"
-            )
-            return
-        
-        # Filter for graph quests (IDs 2 and above for now)
-        graph_quests = [q for q in quests if q.id >= 2]
-        
-        if not graph_quests:
-            await message.answer(
-                f"{hbold('Available Graph Quests')}\n\n"
-                f"No graph quests are currently available. Check back later!"
-            )
-            return
-        
-        quest_list = []
-        for quest in graph_quests:
-            quest_list.append({
-                'id': quest.id,
-                'title': quest.title
-            })
-        
-        keyboard = GraphQuestKeyboardBuilder.graph_quest_list_keyboard(quest_list)
-        
-        quest_text = f"{hbold('Available Graph Quests')}\n\n"
-        for quest in graph_quests:
-            quest_text += f"🎯 {hbold(quest.title)}\n{quest.description}\n\n"
-        
-        await message.answer(quest_text, reply_markup=keyboard)
-
-
-@graph_quest_router.message(Command("graph_quest"))
-async def cmd_graph_quest(message: Message):
-    """Start a graph quest (usage: /graph_quest <quest_id>)."""
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer(
-            f"{hbold('Graph Quest Command')}\n\n"
-            f"Usage: /graph_quest <quest_id>\n"
-            f"Use /graph_quests to see available graph quests."
-        )
-        return
-    
-    try:
-        quest_id = int(args[1])
-    except ValueError:
-        await message.answer("Invalid quest ID. Please provide a number.")
-        return
-    
-    user_id = message.from_user.id
-    quest_data = await GraphQuestManager.start_graph_quest(user_id, quest_id)
-    
-    if not quest_data:
-        await message.answer("Graph quest not found or you cannot start this quest.")
-        return
-    
-    quest = quest_data['quest']
-    current_node = quest_data['current_node']
-    connections = quest_data['connections']
-    
-    # Send quest start message
-    quest_text = (
-        f"{hbold('🎯 Graph Quest Started!')}\n\n"
-        f"{hbold(quest.title)}\n\n"
-        f"{hbold(current_node.title)}\n"
-        f"{current_node.description}\n\n"
-        f"What will you do?"
-    )
-    
-    keyboard = GraphQuestKeyboardBuilder.graph_quest_choice_keyboard(
-        quest.id, current_node.id, connections
-    )
-    await message.answer(quest_text, reply_markup=keyboard)
+# Graph Quest command handlers (now handled by unified /quest command)
 
 
 @graph_quest_router.message(Command("quest_map"))
@@ -314,39 +254,44 @@ async def cmd_quest_map(message: Message):
         return
     
     user_id = message.from_user.id
-    map_data = await GraphQuestManager.get_quest_map(user_id, quest_id)
     
-    if not map_data:
-        await message.answer("Quest not found or you haven't started this quest.")
-        return
-    
-    quest = map_data['quest']
-    current_node_id = map_data['current_node_id']
-    visited_nodes = map_data['visited_nodes']
-    nodes = map_data['nodes']
-    
-    # Create map visualization
-    map_text = f"{hbold('🗺️ Quest Map')}\n\n"
-    map_text += f"{hbold(quest.title)}\n\n"
-    
-    # Show current location
-    current_node = next((n for n in nodes if n['id'] == current_node_id), None)
-    if current_node:
-        map_text += f"📍 {hbold('Current Location:')} {current_node['title']}\n\n"
-    
-    # Show visited locations
-    visited_count = len(visited_nodes)
-    total_nodes = len(nodes)
-    map_text += f"📊 Progress: {visited_count}/{total_nodes} locations visited\n\n"
-    
-    # Show all nodes with status
-    map_text += f"{hbold('Locations:')}\n"
-    for node in nodes:
-        status_icon = "📍" if node['is_current'] else "✅" if node['is_visited'] else "❓"
-        type_icon = "🏁" if node['is_final'] else "🚪" if node['type'] == 'start' else "🔍"
-        map_text += f"{status_icon} {type_icon} {node['title']}\n"
-    
-    await message.answer(map_text)
+    # Check if this is a graph quest (ID >= 1)
+    if quest_id >= 1:
+        map_data = await GraphQuestManager.get_quest_map(user_id, quest_id)
+        
+        if not map_data:
+            await message.answer("Quest not found or you haven't started this quest.")
+            return
+        
+        quest = map_data['quest']
+        current_node_id = map_data['current_node_id']
+        visited_nodes = map_data['visited_nodes']
+        nodes = map_data['nodes']
+        
+        # Create map visualization
+        map_text = f"{hbold('🗺️ Quest Map')}\n\n"
+        map_text += f"{hbold(quest.title)}\n\n"
+        
+        # Show current location
+        current_node = next((n for n in nodes if n['id'] == current_node_id), None)
+        if current_node:
+            map_text += f"📍 {hbold('Current Location:')} {current_node['title']}\n\n"
+        
+        # Show visited locations
+        visited_count = len(visited_nodes)
+        total_nodes = len(nodes)
+        map_text += f"📊 Progress: {visited_count}/{total_nodes} locations visited\n\n"
+        
+        # Show all nodes with status
+        map_text += f"{hbold('Locations:')}\n"
+        for node in nodes:
+            status_icon = "📍" if node['is_current'] else "✅" if node['is_visited'] else "❓"
+            type_icon = "🏁" if node['is_final'] else "🚪" if node['type'] == 'start' else "🔍"
+            map_text += f"{status_icon} {type_icon} {node['title']}\n"
+        
+        await message.answer(map_text)
+    else:
+        await message.answer("Quest map is only available for graph quests (ID >= 1).")
 
 
 # Graph Quest callback handlers
@@ -402,6 +347,7 @@ async def handle_graph_quest_choice(callback: CallbackQuery):
     current_node = result['current_node']
     connections = result['connections']
     connection_used = result['connection_used']
+    encounter = result.get('encounter')
     
     if result.get('completed'):
         # Quest completed - show rewards screen
@@ -409,8 +355,23 @@ async def handle_graph_quest_choice(callback: CallbackQuery):
         from town_handlers import show_quest_rewards
         await show_quest_rewards(callback, quest.title, current_node.description)
         return
+    elif encounter:
+        # Encounter triggered - show encounter options
+        encounter_message = EncounterManager.format_encounter_message(encounter)
+        quest_text = (
+            f"{hbold('✅ Choice Made!')}\n\n"
+            f"{hbold(quest.title)}\n\n"
+            f"{hbold(current_node.title)}\n"
+            f"{current_node.description}\n\n"
+            f"{encounter_message}"
+        )
+        
+        # Create keyboard with encounter options
+        keyboard = GraphQuestKeyboardBuilder.encounter_keyboard(
+            quest.id, current_node.id, encounter
+        )
     else:
-        # Continue quest
+        # Continue quest normally
         quest_text = (
             f"{hbold('✅ Choice Made!')}\n\n"
             f"{hbold(quest.title)}\n\n"

@@ -44,14 +44,22 @@ async def create_quest_from_json(quest_id: int):
         node_id_to_db_id = {}  # Map JSON node IDs to database node IDs
         
         for node_data in nodes_data:
+            # Prepare node_data JSON with encounter_tags if present
+            node_json_data = None
+            if 'encounter_tags' in node_data:
+                node_json_data = json.dumps({
+                    'encounter_tags': node_data['encounter_tags']
+                })
+            
             node = await create_graph_quest_node(
-            session=session,
-            quest_id=quest.id,
+                session=session,
+                quest_id=quest.id,
                 node_type=node_data['type'],
                 title=node_data['title'],
                 description=node_data['description'],
                 is_start=node_data.get('is_start', False),
-                is_final=node_data.get('is_final', False)
+                is_final=node_data.get('is_final', False),
+                node_data=node_json_data
             )
             node_id_to_db_id[node_data['id']] = node.id
         

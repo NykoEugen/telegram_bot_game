@@ -1,7 +1,7 @@
 {
   "quests": [
     {
-      "id": 2,
+      "id": 1,
       "title": "The Dragon's Lair",
       "description": "A complex adventure with multiple paths, choices, and endings. Navigate through the dragon's lair and make crucial decisions that will determine your fate.",
       "nodes": [
@@ -19,7 +19,13 @@
           "title": "The Illuminated Tunnel",
           "description": "You enter the well-lit tunnel. The walls are covered in glowing crystals that provide a warm, magical light. You can see ancient murals depicting dragons and heroes. A fork in the path appears ahead.",
           "is_start": false,
-          "is_final": false
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "cave",
+            "difficulty": "easy",
+            "type": "combat",
+            "special_tags": ["crystal_light"]
+          }
         },
         {
           "id": "center_passage",
@@ -27,7 +33,13 @@
           "title": "The Narrow Passage",
           "description": "You squeeze through the narrow passage. The air is thick with dust and the sound of your footsteps echoes ominously. You find a hidden chamber with three mysterious artifacts: a glowing sword, a ancient tome, and a crystal orb.",
           "is_start": false,
-          "is_final": false
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "cave",
+            "difficulty": "normal",
+            "type": "ambush",
+            "special_tags": ["dusty", "hidden_chamber"]
+          }
         },
         {
           "id": "right_corridor",
@@ -99,7 +111,13 @@
           "title": "The Dragon's Chamber",
           "description": "You finally reach the dragon's chamber. A massive, corrupted dragon lies before you, its eyes glowing with dark magic. You can see the pain and suffering in its gaze. How will you approach this final confrontation?",
           "is_start": false,
-          "is_final": false
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "cave",
+            "difficulty": "boss",
+            "type": "boss",
+            "special_tags": ["dragon", "corrupted", "final_boss"]
+          }
         },
         {
           "id": "redemption_ending",
@@ -258,238 +276,6 @@
           "to": "escape_ending",
           "type": "choice",
           "choice_text": "Retreat from the chamber",
-          "order": 3
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "title": "The Missing Artifact",
-      "description": "A detective story where you must investigate a theft, gather clues, and solve the mystery through careful deduction and choice-making.",
-      "nodes": [
-        {
-          "id": "start",
-          "type": "start",
-          "title": "The Museum Heist",
-          "description": "You arrive at the Grand Museum to find chaos. The legendary 'Crystal of Eternity' has been stolen! The curator is frantic, guards are searching everywhere, and three suspects have been detained. You must investigate and find the real culprit.",
-          "is_start": true,
-          "is_final": false
-        },
-        {
-          "id": "examine_crime_scene",
-          "type": "action",
-          "title": "Examining the Crime Scene",
-          "description": "You carefully examine the crime scene. The display case is shattered, but there are no signs of forced entry. You notice three important clues: a piece of fabric caught on the broken glass, a muddy footprint, and a strange symbol drawn in chalk on the floor.",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "interview_suspects",
-          "type": "choice",
-          "title": "Interviewing Suspects",
-          "description": "You have three suspects to interview: Lady Victoria (a wealthy collector), Professor Blackwood (a museum researcher), and Marcus the Janitor. Each has a different story and alibi. Who do you want to question first?",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "interview_victoria",
-          "type": "action",
-          "title": "Interviewing Lady Victoria",
-          "description": "Lady Victoria claims she was at a charity gala all evening. She seems nervous and keeps checking her expensive watch. She mentions that she 'knows the value of such artifacts' and that 'security here is laughable.' You notice she's wearing a dress that matches the fabric found at the scene.",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "interview_blackwood",
-          "type": "action",
-          "title": "Interviewing Professor Blackwood",
-          "description": "Professor Blackwood is calm and methodical. He explains that he was in his office all night, working on research. He shows you his notes and seems genuinely concerned about the theft. However, you notice the chalk symbol on the floor matches symbols in his research papers.",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "interview_marcus",
-          "type": "action",
-          "title": "Interviewing Marcus the Janitor",
-          "description": "Marcus is clearly frightened and claims he was cleaning the basement all night. He has an alibi from the night guard, but you notice his work boots have mud on them that matches the footprint at the scene. He seems to know more than he's saying.",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "analyze_evidence",
-          "type": "choice",
-          "title": "Analyzing Evidence",
-          "description": "You've gathered several pieces of evidence. Now you need to analyze them carefully. Which piece of evidence do you want to examine more closely?",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "fabric_analysis",
-          "type": "action",
-          "title": "Analyzing the Fabric",
-          "description": "The fabric is expensive silk, matching Lady Victoria's dress. However, upon closer inspection, you realize it's been torn recently and has traces of a chemical used in display case cleaning. This suggests the thief was familiar with the museum's security procedures.",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "footprint_analysis",
-          "type": "action",
-          "title": "Analyzing the Footprint",
-          "description": "The muddy footprint is from a work boot, size 10. It matches Marcus's boots exactly. The mud contains traces of a rare mineral found only in the museum's basement storage area. This suggests the thief had access to restricted areas.",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "symbol_analysis",
-          "type": "action",
-          "title": "Analyzing the Symbol",
-          "description": "The chalk symbol is an ancient rune meaning 'hidden knowledge.' It's drawn in a style that matches Professor Blackwood's research notes. However, the chalk used is a special type that only museum staff have access to.",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "make_accusation",
-          "type": "choice",
-          "title": "Making Your Accusation",
-          "description": "Based on your investigation, you believe you know who the real culprit is. The evidence points to one person, but you need to be certain. Who do you accuse?",
-          "is_start": false,
-          "is_final": false
-        },
-        {
-          "id": "correct_accusation",
-          "type": "end",
-          "title": "The Truth Revealed",
-          "description": "You've correctly identified the thief! Professor Blackwood confesses that he stole the crystal to prevent it from falling into the wrong hands. He reveals that Lady Victoria was planning to sell it to a criminal organization. You've solved the case and prevented a greater crime.",
-          "is_start": false,
-          "is_final": true
-        },
-        {
-          "id": "wrong_accusation",
-          "type": "end",
-          "title": "The Wrong Conclusion",
-          "description": "Your accusation was incorrect. The real thief escapes, and the crystal is lost forever. You learn that sometimes the most obvious suspect isn't the guilty party, and that thorough investigation is crucial in solving mysteries.",
-          "is_start": false,
-          "is_final": true
-        }
-      ],
-      "connections": [
-        {
-          "from": "start",
-          "to": "examine_crime_scene",
-          "type": "choice",
-          "choice_text": "Examine the crime scene",
-          "order": 1
-        },
-        {
-          "from": "start",
-          "to": "interview_suspects",
-          "type": "choice",
-          "choice_text": "Interview the suspects",
-          "order": 2
-        },
-        {
-          "from": "examine_crime_scene",
-          "to": "interview_suspects",
-          "type": "default",
-          "order": 1
-        },
-        {
-          "from": "interview_suspects",
-          "to": "interview_victoria",
-          "type": "choice",
-          "choice_text": "Interview Lady Victoria",
-          "order": 1
-        },
-        {
-          "from": "interview_suspects",
-          "to": "interview_blackwood",
-          "type": "choice",
-          "choice_text": "Interview Professor Blackwood",
-          "order": 2
-        },
-        {
-          "from": "interview_suspects",
-          "to": "interview_marcus",
-          "type": "choice",
-          "choice_text": "Interview Marcus the Janitor",
-          "order": 3
-        },
-        {
-          "from": "interview_victoria",
-          "to": "analyze_evidence",
-          "type": "default",
-          "order": 1
-        },
-        {
-          "from": "interview_blackwood",
-          "to": "analyze_evidence",
-          "type": "default",
-          "order": 1
-        },
-        {
-          "from": "interview_marcus",
-          "to": "analyze_evidence",
-          "type": "default",
-          "order": 1
-        },
-        {
-          "from": "analyze_evidence",
-          "to": "fabric_analysis",
-          "type": "choice",
-          "choice_text": "Analyze the fabric",
-          "order": 1
-        },
-        {
-          "from": "analyze_evidence",
-          "to": "footprint_analysis",
-          "type": "choice",
-          "choice_text": "Analyze the footprint",
-          "order": 2
-        },
-        {
-          "from": "analyze_evidence",
-          "to": "symbol_analysis",
-          "type": "choice",
-          "choice_text": "Analyze the symbol",
-          "order": 3
-        },
-        {
-          "from": "fabric_analysis",
-          "to": "make_accusation",
-          "type": "default",
-          "order": 1
-        },
-        {
-          "from": "footprint_analysis",
-          "to": "make_accusation",
-          "type": "default",
-          "order": 1
-        },
-        {
-          "from": "symbol_analysis",
-          "to": "make_accusation",
-          "type": "default",
-          "order": 1
-        },
-        {
-          "from": "make_accusation",
-          "to": "correct_accusation",
-          "type": "choice",
-          "choice_text": "Accuse Professor Blackwood",
-          "order": 1
-        },
-        {
-          "from": "make_accusation",
-          "to": "wrong_accusation",
-          "type": "choice",
-          "choice_text": "Accuse Lady Victoria",
-          "order": 2
-        },
-        {
-          "from": "make_accusation",
-          "to": "wrong_accusation",
-          "type": "choice",
-          "choice_text": "Accuse Marcus the Janitor",
           "order": 3
         }
       ]
