@@ -52,6 +52,14 @@ async def on_startup(app: web.Application):
         logger.info("Towns initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize towns: {e}")
+    
+    # Initialize hero classes
+    try:
+        from init_hero_classes import init_hero_classes
+        await init_hero_classes()
+        logger.info("Hero classes initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize hero classes: {e}")
 
 
 async def on_shutdown(app: web.Application):
