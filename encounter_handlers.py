@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Dict, Any
 
 from aiogram import Router, F
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.markdown import hbold, hitalic
 
@@ -15,11 +16,14 @@ from database import (
     get_hero_by_user_id,
     get_hero_class_by_id,
     get_monster_class_by_name,
+    get_user_graph_quest_progress,
     create_monster
 )
 from encounter_system import encounter_engine, EncounterResult
 from combat_system import combat_engine, CombatAction
-from keyboards import CombatKeyboardBuilder
+from combat_handlers import CombatStates
+from graph_quest_handlers import GraphQuestManager
+from keyboards import CombatKeyboardBuilder, get_combat_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +55,9 @@ class EncounterManager:
             if not user:
                 return None
             
-            hero = await get_hero_by_user_id(session, user_id)
+            hero = await get_hero_by_user_id(session, user.id)
+            if not hero:
+                hero = await get_hero_by_user_id(session, user.user_id)
             if not hero:
                 return None
             
@@ -72,8 +78,9 @@ class EncounterManager:
     
     @staticmethod
     async def start_encounter_combat(
-        user_id: int, 
-        encounter: EncounterResult
+        user_id: int,
+        encounter: EncounterResult,
+        quest_state: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
         Start combat for an encounter.
@@ -91,7 +98,9 @@ class EncounterManager:
             if not user:
                 return False
             
-            hero = await get_hero_by_user_id(session, user_id)
+            hero = await get_hero_by_user_id(session, user.id)
+            if not hero:
+                hero = await get_hero_by_user_id(session, user.user_id)
             if not hero:
                 return False
             
@@ -127,7 +136,34 @@ class EncounterManager:
                 await EncounterManager._apply_encounter_modifiers(
                     combat_state, encounter.special_modifiers
                 )
-            
+
+            if quest_state:
+                hero_debuff = quest_state.get('hero_debuff')
+                if hero_debuff:
+                    atk_multiplier = hero_debuff.get('atk_multiplier', 1.0)
+                    dodge_penalty = hero_debuff.get('dodge_penalty', 0.0)
+                    hp_penalty = hero_debuff.get('hp_penalty_percent', 0.0)
+
+                    combat_state.hero_stats.atk = int(combat_state.hero_stats.atk * atk_multiplier)
+                    combat_state.hero_stats.mag = int(combat_state.hero_stats.mag * atk_multiplier)
+                    combat_state.hero_stats.crit_chance = max(
+                        0.0,
+                        combat_state.hero_stats.crit_chance * atk_multiplier
+                    )
+                    combat_state.hero_stats.dodge = max(
+                        0.0,
+                        combat_state.hero_stats.dodge * (1 - dodge_penalty)
+                    )
+
+                    if hp_penalty > 0:
+                        adjusted_hp = max(1, int(combat_state.hero_hp * (1 - hp_penalty)))
+                        combat_state.hero_hp = adjusted_hp
+                        combat_state.hero_stats.hp_current = adjusted_hp
+
+                    combat_state.combat_log.append(
+                        hero_debuff.get('message', '⚠️ Герой ослаблений після втечі!')
+                    )
+
             return True
     
     @staticmethod
@@ -203,54 +239,68 @@ class EncounterManager:
 
 # Encounter callback handlers
 @encounter_router.callback_query(F.data.startswith("encounter_combat:"))
-async def handle_encounter_combat(callback: CallbackQuery):
+async def handle_encounter_combat(callback: CallbackQuery, state: FSMContext):
     """Handle encounter combat callback."""
     parts = callback.data.split(":")
     quest_id = int(parts[1])
-    node_id = parts[2]
+    node_id = int(parts[2])
     user_id = callback.from_user.id
-    
-    # Get quest node data (this would need to be passed or retrieved)
-    # For now, we'll create a simple encounter
-    quest_node_data = {
-        'id': node_id,
-        'quest_id': quest_id,
-        'encounter_tags': {
-            'biome': 'cave',
-            'difficulty': 'normal',
-            'type': 'combat'
-        }
-    }
-    
-    # Trigger encounter
-    encounter = await EncounterManager.trigger_encounter(user_id, quest_node_data)
-    
+
+    # Prevent starting another combat if already active
+    if combat_engine.get_combat_state(user_id):
+        await callback.answer("Ви вже в бою!", show_alert=True)
+        return
+
+    async with AsyncSessionLocal() as session:
+        progress = await get_user_graph_quest_progress(session, user_id, quest_id)
+        if not progress or progress.status != 'active':
+            await callback.answer("Немає активного квесту.", show_alert=True)
+            return
+
+        quest_state = GraphQuestManager._load_progress_state(progress)
+        active_encounter = quest_state.get('active_encounter') or {}
+
+        if active_encounter.get('node_id') != node_id:
+            await callback.answer("Подія недоступна.", show_alert=True)
+            return
+
+        encounter = GraphQuestManager._deserialize_encounter(active_encounter.get('encounter'))
+
     if not encounter:
-        await callback.answer("No encounter found for this location.", show_alert=True)
+        await callback.answer("Не вдалося знайти інформацію про битву.", show_alert=True)
         return
-    
-    # Start combat
-    combat_started = await EncounterManager.start_encounter_combat(user_id, encounter)
-    
+
+    combat_started = await EncounterManager.start_encounter_combat(
+        user_id,
+        encounter,
+        quest_state=quest_state
+    )
+
     if not combat_started:
-        await callback.answer("Failed to start combat.", show_alert=True)
+        await callback.answer("Не вдалося розпочати бій.", show_alert=True)
         return
-    
-    # Get combat state
+
     combat_state = combat_engine.get_combat_state(user_id)
     if not combat_state:
-        await callback.answer("Combat state not found.", show_alert=True)
+        await callback.answer("Стан бою не знайдено.", show_alert=True)
         return
-    
-    # Format encounter and combat messages
+
+    # Set FSM context for combat flow
+    await state.set_state(CombatStates.IN_COMBAT)
+    await state.update_data(
+        source='graph_quest',
+        quest_id=quest_id,
+        node_id=node_id,
+        encounter=GraphQuestManager._serialize_encounter(encounter),
+        flee_penalty_applied=False
+    )
+
     encounter_message = EncounterManager.format_encounter_message(encounter)
     combat_status = combat_engine.format_combat_status(combat_state)
-    
+
     full_message = f"{encounter_message}\n\n{combat_status}"
-    
-    # Create combat keyboard
-    keyboard = CombatKeyboardBuilder.combat_keyboard()
-    
+    keyboard = get_combat_keyboard()
+
     await callback.message.edit_text(full_message, reply_markup=keyboard)
     await callback.answer()
 
@@ -263,7 +313,7 @@ async def handle_encounter_flee(callback: CallbackQuery):
     # Check if user is in combat
     combat_state = combat_engine.get_combat_state(user_id)
     if not combat_state:
-        await callback.answer("You are not in combat.", show_alert=True)
+        await callback.answer("Зараз немає бою для втечі.", show_alert=True)
         return
     
     # Try to flee
@@ -272,13 +322,13 @@ async def handle_encounter_flee(callback: CallbackQuery):
     if flee_result and "успішно втік" in flee_result.message:
         # Successfully fled
         await callback.message.edit_text(
-            f"🏃 {hbold('Fled from encounter!')}\n\n"
-            f"You successfully escaped from the battle."
+            f"🏃 {hbold('Втеча!')}\n\n"
+            f"Вам вдалося покинути бій."
         )
     else:
         # Failed to flee, show combat status
         combat_status = combat_engine.format_combat_status(combat_state)
-        keyboard = CombatKeyboardBuilder.combat_keyboard()
+        keyboard = get_combat_keyboard()
         
         await callback.message.edit_text(combat_status, reply_markup=keyboard)
     

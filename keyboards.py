@@ -279,32 +279,26 @@ class GraphQuestKeyboardBuilder:
     def encounter_keyboard(quest_id: int, node_id: int, encounter) -> InlineKeyboardMarkup:
         """
         Create keyboard for encounter options.
-        
+
         Args:
             quest_id: ID of the quest
             node_id: ID of the current quest node
             encounter: EncounterResult object
-            
+
         Returns:
             InlineKeyboardMarkup with encounter options
         """
         builder = InlineKeyboardBuilder()
-        
+
         # Fight button
         builder.button(
             text="⚔️ Fight",
             callback_data=f"encounter_combat:{quest_id}:{node_id}"
         )
         
-        # Flee button
-        builder.button(
-            text="🏃 Flee",
-            callback_data=f"encounter_flee:{quest_id}:{node_id}"
-        )
-        
         # Adjust layout
-        builder.adjust(2)
-        
+        builder.adjust(1)
+
         return builder.as_markup()
     
     @staticmethod
