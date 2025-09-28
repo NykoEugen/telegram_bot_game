@@ -212,6 +212,8 @@ The system supports:
 - **Node Data**: JSON data for complex node behavior
 - **Quest State**: Persistent data across quest progression
 - **Multiple Endings**: Different outcomes based on choices
+- **Integrated Combat Encounters**: Nodes with `encounter_tags` trigger quest-specific monster battles that pause progression until resolved. Encounter state is stored in `quest_data`, allowing retries after defeat or continuing the story automatically on victory.
+- **Dynamic Combat Outcomes**: Defeats pause the quest until the hero fully heals, successful escapes apply temporary debuffs and revert to the previous node, failed escapes impose penalties mid-fight, and victories grant bonus rewards and resume the quest seamlessly.
 
 ## File Structure
 

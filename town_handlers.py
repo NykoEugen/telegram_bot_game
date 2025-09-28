@@ -19,8 +19,17 @@ from database import (
     get_town_connections_bidirectional,
     create_user_town_progress,
     get_user_town_progress,
-    update_user_town_progress
+    update_user_town_progress,
+    get_user_by_telegram_id,
+    get_hero_by_user_id,
+    get_hero_class_by_id,
+    update_hero,
+    get_quest_by_id,
+    get_graph_quest_progresses_for_user,
+    get_user_graph_quest_progress
 )
+from hero_system import HeroCalculator
+from graph_quest_handlers import GraphQuestManager
 from keyboards import TownKeyboardBuilder
 
 logger = logging.getLogger(__name__)
@@ -51,6 +60,112 @@ async def get_node_names_for_connections(session, connections):
             if node:
                 node_names[connection.to_node_id] = node.name
     return node_names
+
+
+async def _get_user_and_hero(session, telegram_user_id: int):
+    """Fetch user row and associated hero using either Telegram ID or internal ID."""
+    user = await get_user_by_telegram_id(session, telegram_user_id)
+    hero = await get_hero_by_user_id(session, telegram_user_id)
+
+    if not hero and user:
+        hero = await get_hero_by_user_id(session, user.id)
+
+    return user, hero
+
+
+async def _get_hero_stats(session, hero):
+    """Return hero class and calculated stats."""
+    hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+    if not hero_class:
+        return hero_class, None
+    stats = HeroCalculator.create_hero_stats(hero, hero_class)
+    return hero_class, stats
+
+
+async def _get_inn_node_id(session, town_id: int) -> Optional[int]:
+    """Find inn node id for a town."""
+    nodes = await get_town_nodes(session, town_id)
+    for node in nodes:
+        if node.node_type == "inn":
+            return node.id
+    return None
+
+
+async def _ensure_hero_can_accept(callback: CallbackQuery, session, town_id: int, node_id: int, location_name: str):
+    """Ensure hero exists, has HP, and is not blocked by recovery. Returns (user, hero, stats) or None tuple if blocked."""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+    user, hero = await _get_user_and_hero(session, callback.from_user.id)
+    if not hero:
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="🔙 Back",
+            callback_data=f"town_back_to_location:{town_id}:{node_id}"
+        )
+        text = (
+            f"❌ {hbold('Героя не знайдено')}\n\n"
+            f"Створіть героя командою /create_hero, щоб брати завдання у {location_name}."
+        )
+        await safe_edit_message(callback, text, builder.as_markup())
+        return None, None, None
+
+    hero_class, hero_stats = await _get_hero_stats(session, hero)
+    if not hero_stats:
+        builder = InlineKeyboardBuilder()
+        builder.button(
+            text="🔙 Back",
+            callback_data=f"town_back_to_location:{town_id}:{node_id}"
+        )
+        text = (
+            f"❌ {hbold('Помилка даних героя')}\n\n"
+            f"Не вдалося визначити характеристики героя. Спробуйте пізніше."
+        )
+        await safe_edit_message(callback, text, builder.as_markup())
+        return None, None, None
+
+    inn_node_id = await _get_inn_node_id(session, town_id)
+
+    def rest_buttons(builder: InlineKeyboardBuilder):
+        if inn_node_id:
+            builder.button(
+                text="🏨 Відвідати таверну",
+                callback_data=f"town_go_to:{town_id}:{inn_node_id}"
+            )
+        builder.button(
+            text="🔙 Back",
+            callback_data=f"town_back_to_location:{town_id}:{node_id}"
+        )
+
+    if hero.current_hp <= 1:
+        builder = InlineKeyboardBuilder()
+        rest_buttons(builder)
+        text = (
+            f"⚠️ {hbold('Герой виснажений')}\n\n"
+            f"Потрібно відновити здоров'я в таверні, перш ніж приймати завдання." 
+        )
+        await safe_edit_message(callback, text, builder.as_markup())
+        return None, None, None
+
+    needs_recovery = False
+    if user:
+        progresses = await get_graph_quest_progresses_for_user(session, user.id, statuses=['active', 'paused'])
+        for progress in progresses:
+            state = GraphQuestManager._load_progress_state(progress)
+            if state.get('needs_recovery'):
+                needs_recovery = True
+                break
+
+    if needs_recovery:
+        builder = InlineKeyboardBuilder()
+        rest_buttons(builder)
+        text = (
+            f"🩹 {hbold('Герою потрібен відпочинок')}\n\n"
+            f"Спершу відновіть здоров'я в таверні, тоді можна буде повернутись до завдань." 
+        )
+        await safe_edit_message(callback, text, builder.as_markup())
+        return None, None, None
+
+    return user, hero, hero_stats
 
 
 @router.message(Command("town"))
@@ -114,6 +229,60 @@ async def cmd_town(message: Message):
             keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections, node_names)
         
         await message.answer(welcome_text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "town_list")
+async def handle_town_list(callback: CallbackQuery):
+    """Handle town access from inline buttons (main menu, etc.)."""
+    await callback.answer()
+
+    user = callback.from_user
+    town_id = 1
+
+    async with AsyncSessionLocal() as session:
+        town_progress = await get_user_town_progress(session, user.id, town_id)
+
+        if not town_progress:
+            town_progress = await create_user_town_progress(
+                session=session,
+                user_id=user.id,
+                town_id=town_id,
+                current_node_id=1
+            )
+
+        town = await get_town_by_id(session, town_id)
+        if not town:
+            await callback.message.answer("❌ Town not found. Please contact administrator.")
+            return
+
+        current_node = await get_town_node_by_id(session, town_progress.current_node_id)
+        if not current_node:
+            await callback.message.answer("❌ Current location not found. Please contact administrator.")
+            return
+
+        welcome_text = (
+            f"🏘️ {hbold('Welcome to')} {hbold(town.name)}!\n\n"
+            f"{town.description}\n\n"
+            f"📍 {hbold('Current Location:')} {current_node.name}\n"
+            f"{current_node.description}\n\n"
+            f"Choose your next action:"
+        )
+
+        connections = await get_town_connections(session, current_node.id)
+
+        if current_node.node_type == "guild":
+            keyboard = TownKeyboardBuilder.guild_keyboard(town_id, current_node.id)
+        elif current_node.node_type == "barracks":
+            keyboard = TownKeyboardBuilder.barracks_keyboard(town_id, current_node.id)
+        elif current_node.node_type == "square":
+            keyboard = TownKeyboardBuilder.square_keyboard(town_id, current_node.id)
+        elif current_node.node_type == "inn":
+            keyboard = TownKeyboardBuilder.inn_keyboard(town_id, current_node.id)
+        else:
+            node_names = await get_node_names_for_connections(session, connections)
+            keyboard = TownKeyboardBuilder.town_node_keyboard(town_id, current_node.id, connections, node_names)
+
+        await safe_edit_message(callback, welcome_text, keyboard)
 
 
 @router.callback_query(F.data.startswith("town_explore:"))
@@ -401,56 +570,180 @@ async def handle_town_center(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("guild_quests:"))
 async def handle_guild_quests(callback: CallbackQuery):
     """Handle guild quest board."""
-    await callback.answer()
-    
     parts = callback.data.split(":")
     town_id = int(parts[1])
     node_id = int(parts[2])
-    
-    # Get available quests from database
+    await _render_guild_board(callback, town_id, node_id)
+
+
+async def _render_guild_board(callback: CallbackQuery, town_id: int, node_id: int, *, answer: bool = True):
+    """Render the guild quest board with proper gating and options."""
+    if answer:
+        await callback.answer()
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+
     async with AsyncSessionLocal() as session:
+        user, hero = await _get_user_and_hero(session, callback.from_user.id)
+
+        if not hero:
+            builder = InlineKeyboardBuilder()
+            builder.button(
+                text="🔙 Back to Guild",
+                callback_data=f"town_back_to_location:{town_id}:{node_id}"
+            )
+
+            text = (
+                f"❌ {hbold('Героя не знайдено!')}\n\n"
+                f"Створіть героя командою /create_hero, щоб брати участь у гільдійських завданнях."
+            )
+            await safe_edit_message(callback, text, builder.as_markup())
+            return
+
+        hero_class, hero_stats = await _get_hero_stats(session, hero)
+        if not hero_stats:
+            builder = InlineKeyboardBuilder()
+            builder.button(
+                text="🔙 Back to Guild",
+                callback_data=f"town_back_to_location:{town_id}:{node_id}"
+            )
+            text = (
+                f"❌ {hbold('Помилка класу героя')}\n\n"
+                f"Неможливо визначити характеристики героя. Спробуйте пізніше."
+            )
+            await safe_edit_message(callback, text, builder.as_markup())
+            return
+
+        inn_node_id = await _get_inn_node_id(session, town_id)
+
+        def _rest_buttons(builder: InlineKeyboardBuilder):
+            if inn_node_id:
+                builder.button(
+                    text="🏨 Відвідати таверну",
+                    callback_data=f"town_go_to:{town_id}:{inn_node_id}"
+                )
+            builder.button(
+                text="🔙 Back to Guild",
+                callback_data=f"town_back_to_location:{town_id}:{node_id}"
+            )
+
+        if hero.current_hp <= 1:
+            builder = InlineKeyboardBuilder()
+            _rest_buttons(builder)
+            text = (
+                f"⚠️ {hbold('Герой виснажений')}\n\n"
+                f"У вас лише {hero.current_hp} HP. Відновіть здоров'я в таверні, перш ніж брати нові завдання."
+            )
+            await safe_edit_message(callback, text, builder.as_markup())
+            return
+
+        active_entries = []
+        needs_recovery = False
+
+        if user:
+            progresses = await get_graph_quest_progresses_for_user(session, user.id, statuses=['active', 'paused'])
+            for progress in progresses:
+                state = GraphQuestManager._load_progress_state(progress)
+                if state.get('needs_recovery'):
+                    needs_recovery = True
+                elif progress.status in ('active', 'paused'):
+                    active_entries.append((progress, state))
+
+        if needs_recovery:
+            builder = InlineKeyboardBuilder()
+            _rest_buttons(builder)
+            text = (
+                f"🩹 {hbold('Герою потрібен відпочинок')}\n\n"
+                f"Ви не можете брати нові завдання, поки не відновите здоров'я в таверні."
+            )
+            await safe_edit_message(callback, text, builder.as_markup())
+            return
+
         from database import get_active_quests
         quests = await get_active_quests(session)
-        
-        quest_text = (
-            f"📋 {hbold('Thieves Guild Quest Board')}\n\n"
-            f"Welcome to the guild, adventurer! Here you can find various quests and contracts.\n\n"
-            f"🔍 {hbold('Available Quests:')}\n"
-        )
-        
-        # Add quests from database
-        for quest in quests[:3]:  # Show first 3 quests
-            quest_text += f"• {quest.title} - {quest.description[:50]}...\n"
-        
-        quest_text += f"\nUse /quests to see all available quests in the system."
-    
-    # Create keyboard with quest options
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    builder = InlineKeyboardBuilder()
-    
-    # Add buttons for each quest
-    for quest in quests[:3]:
-        builder.button(
-            text=f"🎯 {quest.title}",
-            callback_data=f"quest_start:{quest.id}"
-        )
-    
-    # Add back button
-    builder.button(
-        text="🔙 Back to Guild",
-        callback_data=f"town_back_to_location:{town_id}:{node_id}"
-    )
-    
-    # Add view all quests button
-    builder.button(
-        text="📋 All Quests",
-        callback_data="quest_list"
-    )
-    
-    builder.adjust(1, 2)
-    keyboard = builder.as_markup()
-    
+
+        builder = InlineKeyboardBuilder()
+
+        if active_entries:
+            text_lines = [
+                f"📋 {hbold('Продовження квесту')}\n",
+                "У вас є незавершені пригоди. Оберіть дію:"
+            ]
+
+            for progress, _ in active_entries:
+                quest = await get_quest_by_id(session, progress.quest_id)
+                if not quest:
+                    continue
+                builder.button(
+                    text=f"▶️ Продовжити: {quest.title}",
+                    callback_data=f"graph_quest_start:{quest.id}"
+                )
+                builder.button(
+                    text=f"♻️ Скинути: {quest.title}",
+                    callback_data=f"quest_reset:{town_id}:{node_id}:{quest.id}"
+                )
+
+            builder.button(
+                text="📋 Всі квести",
+                callback_data="quest_list"
+            )
+            builder.button(
+                text="🔙 Back to Guild",
+                callback_data=f"town_back_to_location:{town_id}:{node_id}"
+            )
+
+            builder.adjust(1, 1, 2)
+            quest_text = "\n".join(text_lines)
+        else:
+            quest_text = (
+                f"📋 {hbold('Thieves Guild Quest Board')}\n\n"
+                f"Ласкаво просимо до гільдії, авантюристи! Ось доступні контракти.\n\n"
+                f"🔍 {hbold('Доступні квести:')}\n"
+            )
+
+            for quest in quests[:3]:
+                quest_text += f"• {quest.title} - {quest.description[:50]}...\n"
+                builder.button(
+                    text=f"🎯 {quest.title}",
+                    callback_data=f"quest_start:{quest.id}"
+                )
+
+            quest_text += "\nВикористайте /quests, щоб переглянути всі квести."
+
+            builder.button(
+                text="📋 All Quests",
+                callback_data="quest_list"
+            )
+            builder.button(
+                text="🔙 Back to Guild",
+                callback_data=f"town_back_to_location:{town_id}:{node_id}"
+            )
+
+            builder.adjust(1, 2)
+
+        keyboard = builder.as_markup()
+
     await safe_edit_message(callback, quest_text, keyboard)
+
+
+@router.callback_query(F.data.startswith("quest_reset:"))
+async def handle_quest_reset(callback: CallbackQuery):
+    """Handle resetting an active graph quest."""
+    parts = callback.data.split(":")
+    town_id = int(parts[1])
+    node_id = int(parts[2])
+    quest_id = int(parts[3])
+
+    async with AsyncSessionLocal() as session:
+        user, _ = await _get_user_and_hero(session, callback.from_user.id)
+        if user:
+            progress = await get_user_graph_quest_progress(session, user.id, quest_id)
+            if progress:
+                await session.delete(progress)
+                await session.commit()
+
+    await callback.answer("Квестовий прогрес скинуто.")
+    await _render_guild_board(callback, town_id, node_id, answer=False)
 
 
 @router.callback_query(F.data.startswith("guild_talk:"))
@@ -529,6 +822,16 @@ async def handle_barracks_monsters(callback: CallbackQuery):
     
     # Get available quests from database
     async with AsyncSessionLocal() as session:
+        user, hero, hero_stats = await _ensure_hero_can_accept(
+            callback,
+            session,
+            town_id,
+            node_id,
+            "бараках"
+        )
+        if not hero:
+            return
+
         from database import get_active_quests
         quests = await get_active_quests(session)
         
@@ -582,7 +885,18 @@ async def handle_barracks_escort(callback: CallbackQuery):
     parts = callback.data.split(":")
     town_id = int(parts[1])
     node_id = int(parts[2])
-    
+
+    async with AsyncSessionLocal() as session:
+        user, hero, hero_stats = await _ensure_hero_can_accept(
+            callback,
+            session,
+            town_id,
+            node_id,
+            "бараках"
+        )
+        if not hero:
+            return
+
     escort_text = (
         f"🚛 {hbold('Caravan Escort Missions')}\n\n"
         f"A merchant approaches you with a worried expression.\n\n"
@@ -614,7 +928,18 @@ async def handle_barracks_guard(callback: CallbackQuery):
     parts = callback.data.split(":")
     town_id = int(parts[1])
     node_id = int(parts[2])
-    
+
+    async with AsyncSessionLocal() as session:
+        user, hero, hero_stats = await _ensure_hero_can_accept(
+            callback,
+            session,
+            town_id,
+            node_id,
+            "бараках"
+        )
+        if not hero:
+            return
+
     guard_text = (
         f"🛡️ {hbold('Guard Duty')}\n\n"
         f"The guard sergeant looks you up and down.\n\n"
@@ -773,7 +1098,22 @@ async def handle_inn_rest(callback: CallbackQuery):
     parts = callback.data.split(":")
     town_id = int(parts[1])
     node_id = int(parts[2])
-    
+    user = callback.from_user
+    healed_hp_text = ""
+
+    async with AsyncSessionLocal() as session:
+        db_user, hero = await _get_user_and_hero(session, user.id)
+        if hero:
+            hero_class, hero_stats = await _get_hero_stats(session, hero)
+            if hero_stats:
+                hero.current_hp = hero_stats.hp_max
+                await update_hero(session, hero)
+                healed_hp_text = f"❤️ HP відновлено до {hero_stats.hp_max}."
+                if db_user:
+                    await GraphQuestManager.clear_recovery_state(session, db_user.id)
+        else:
+            healed_hp_text = "❤️ Відпочинок завершено. Створіть героя, щоб скористатися всіма перевагами."
+
     rest_text = (
         f"😴 {hbold('Resting at the Inn')}\n\n"
         f"You rent a room for the night and get a good night's sleep.\n\n"
@@ -783,7 +1123,10 @@ async def handle_inn_rest(callback: CallbackQuery):
         f"• Save point updated\n\n"
         f"\"Sleep well, traveler,\" says the innkeeper. \"The roads can be dangerous, so rest while you can.\""
     )
-    
+
+    if healed_hp_text:
+        rest_text += f"\n\n{healed_hp_text}"
+
     # Create back button
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
@@ -792,7 +1135,7 @@ async def handle_inn_rest(callback: CallbackQuery):
         callback_data=f"town_back_to_location:{town_id}:{node_id}"
     )
     keyboard = builder.as_markup()
-    
+
     await safe_edit_message(callback, rest_text, keyboard)
 
 

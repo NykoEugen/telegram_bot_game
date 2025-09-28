@@ -585,6 +585,20 @@ async def update_graph_quest_progress(
     return progress
 
 
+async def get_graph_quest_progresses_for_user(
+    session: AsyncSession,
+    user_id: int,
+    statuses: Optional[list[str]] = None
+) -> list[GraphQuestProgress]:
+    """Get all graph quest progresses for a user with optional status filter."""
+    query = select(GraphQuestProgress).where(GraphQuestProgress.user_id == user_id)
+    if statuses:
+        query = query.where(GraphQuestProgress.status.in_(statuses))
+
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
 async def get_graph_quest_by_id(session: AsyncSession, quest_id: int) -> Optional[Quest]:
     """Get quest by ID (works for both regular and graph quests)."""
     result = await session.execute(
@@ -1215,6 +1229,29 @@ async def get_monster_classes_by_difficulty(session: AsyncSession, difficulty: s
     result = await session.execute(
         select(MonsterClass).where(MonsterClass.difficulty == difficulty)
     )
+    return list(result.scalars().all())
+
+
+async def get_monster_classes_by_criteria(
+    session: AsyncSession, 
+    monster_types: Optional[list[str]] = None,
+    difficulty: Optional[str] = None
+) -> list[MonsterClass]:
+    """Get monster classes by multiple criteria."""
+    query = select(MonsterClass)
+    
+    conditions = []
+    
+    if monster_types:
+        conditions.append(MonsterClass.monster_type.in_(monster_types))
+    
+    if difficulty:
+        conditions.append(MonsterClass.difficulty == difficulty)
+    
+    if conditions:
+        query = query.where(*conditions)
+    
+    result = await session.execute(query)
     return list(result.scalars().all())
 
 

@@ -3,7 +3,8 @@ Initialize monster classes in the database from JSON configuration.
 """
 
 import logging
-from database import get_db_session, create_monster_class, get_all_monster_classes
+import random
+from database import get_db_session, create_monster_class, get_all_monster_classes, create_monster, get_monster_classes_by_difficulty
 from monster_system import MonsterClasses
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,38 @@ async def init_monster_classes():
         except Exception as e:
             logger.error(f"Error initializing monster classes: {e}")
             raise
+
+
+async def create_sample_monster(session, difficulty: str = "easy", level: int = 1):
+    """Create a sample monster for combat testing."""
+    try:
+        # Get monster classes by difficulty
+        monster_classes = await get_monster_classes_by_difficulty(session, difficulty)
+        
+        if not monster_classes:
+            # Fallback to any available monster class
+            all_classes = await get_all_monster_classes(session)
+            if not all_classes:
+                raise ValueError("No monster classes available")
+            monster_class = random.choice(all_classes)
+        else:
+            monster_class = random.choice(monster_classes)
+        
+        # Create monster instance
+        monster = await create_monster(
+            session=session,
+            monster_class_id=monster_class.id,
+            name=f"{monster_class.name} (Level {level})",
+            level=level,
+            location="Combat Arena"
+        )
+        
+        logger.info(f"Created sample monster: {monster.name} (Class: {monster_class.name})")
+        return monster
+        
+    except Exception as e:
+        logger.error(f"Error creating sample monster: {e}")
+        raise
 
 
 if __name__ == "__main__":

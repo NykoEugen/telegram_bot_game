@@ -81,7 +81,11 @@ async def cmd_help(message: Message):
         f"/stats - Show hero stats (same as /hero)\n"
         f"/town - Enter the starting village\n"
         f"/quests - Show available quests\n"
-        f"/quest &lt;id&gt; - Start a specific quest"
+        f"/quest &lt;id&gt; - Start a specific quest\n\n"
+        f"{hbold('Combat Commands:')}\n"
+        f"/fight - Start a fight with a random monster\n"
+        f"/combat_status - Check current combat status\n"
+        f"/end_combat - Force end current combat"
     )
     
     await message.answer(help_text)
@@ -173,12 +177,16 @@ def register_handlers(dp: Dispatcher):
     from graph_quest_handlers import register_graph_quest_handlers
     from town_handlers import register_town_handlers
     from hero_handlers import register_hero_handlers
+    from combat_handlers import router as combat_router
+    from encounter_handlers import register_encounter_handlers
     
     # Register FSM handlers FIRST to ensure they have priority
     register_hero_handlers(dp)
     
     # Then register other handlers
     dp.include_router(router)
+    dp.include_router(combat_router)  # Add combat handlers
+    register_encounter_handlers(dp)  # Add encounter handlers
     register_quest_handlers(dp)
     register_graph_quest_handlers(dp)
     register_town_handlers(dp)

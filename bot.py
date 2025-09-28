@@ -60,6 +60,14 @@ async def on_startup(app: web.Application):
         logger.info("Hero classes initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize hero classes: {e}")
+    
+    # Initialize monster classes
+    try:
+        from init_monsters import init_monster_classes
+        await init_monster_classes()
+        logger.info("Monster classes initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize monster classes: {e}")
 
 
 async def on_shutdown(app: web.Application):
