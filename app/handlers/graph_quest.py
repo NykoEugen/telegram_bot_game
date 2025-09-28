@@ -746,7 +746,7 @@ async def handle_graph_quest_choice(callback: CallbackQuery):
     if result.get('completed'):
         # Quest completed - show rewards screen
         # Import here to avoid circular imports
-        from town_handlers import show_quest_rewards
+        from app.handlers.town import show_quest_rewards
         await show_quest_rewards(callback, quest.title, current_node.description)
         return
     elif encounter:

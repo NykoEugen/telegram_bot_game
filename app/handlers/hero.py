@@ -391,7 +391,7 @@ async def start_journey(callback: CallbackQuery, state: FSMContext):
         connections = await get_town_connections(session, current_node.id)
         
         # Create keyboard with available actions
-        from keyboards import create_town_keyboard
+        from app.keyboards import create_town_keyboard
         keyboard = await create_town_keyboard(connections, current_node.id)
         
         try:
@@ -580,7 +580,7 @@ async def close_hero_to_inn_handler(callback: CallbackQuery):
     node_id = int(parts[2])
     
     # Import here to avoid circular imports
-    from town_handlers import handle_town_back_to_location
+    from app.handlers.town import handle_town_back_to_location
     
     # Create a mock callback with the correct data for town_back_to_location
     class MockCallback:
