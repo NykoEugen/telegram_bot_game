@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.markdown import hbold, hitalic
 
-from database import (
+from app.database import (
     AsyncSessionLocal,
     get_user_by_telegram_id,
     get_hero_by_user_id,
@@ -19,11 +19,11 @@ from database import (
     get_user_graph_quest_progress,
     create_monster
 )
-from encounter_system import encounter_engine, EncounterResult
-from combat_system import combat_engine, CombatAction
-from combat_handlers import CombatStates
-from graph_quest_handlers import GraphQuestManager
-from keyboards import CombatKeyboardBuilder, get_combat_keyboard
+from app.core.encounter_system import encounter_engine, EncounterResult
+from app.core.combat_system import combat_engine, CombatAction
+from app.handlers.combat import CombatStates
+from app.handlers.graph_quest import GraphQuestManager
+from app.keyboards import CombatKeyboardBuilder, get_combat_keyboard
 
 logger = logging.getLogger(__name__)
 

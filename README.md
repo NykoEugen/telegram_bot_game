@@ -16,15 +16,23 @@ A modern Telegram bot skeleton built with aiogram 3.13, featuring webhook suppor
 
 ```
 telegram_bot_game/
-├── bot.py              # Main bot application
-├── config.py           # Configuration management
-├── database.py         # Database models and operations
-├── handlers.py         # Message and command handlers
-├── middleware.py       # Custom middleware
-├── start.py           # Startup script
-├── requirements.txt    # Python dependencies
-├── env.template       # Environment variables template
-└── README.md          # This file
+├── app/
+│   ├── __init__.py
+│   ├── bot.py                 # Webhook entrypoint and aiohttp app
+│   ├── config.py              # Settings loading and validation
+│   ├── database.py            # SQLAlchemy models and async helpers
+│   ├── keyboards.py           # Inline keyboard builders
+│   ├── middleware.py          # Global aiogram middleware
+│   ├── core/                  # Combat, hero, monster & encounter systems
+│   ├── handlers/              # Aiogram routers grouped by domain
+│   ├── initializers/          # Database seeding utilities
+│   └── data/                  # JSON content for quests/classes
+├── docs/                      # Design notes and configuration guides
+├── tests/                     # Utility scripts for manual verification
+├── start.py                   # Startup helper that loads .env and runs the bot
+├── requirements.txt           # Python dependencies
+├── env.template               # Environment variables template
+└── README.md                  # This file
 ```
 
 ## Quick Start

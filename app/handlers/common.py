@@ -1,13 +1,13 @@
 import logging
 from datetime import datetime
 
-from aiogram import Dispatcher, Router, F
+from aiogram import Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, User
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.markdown import hbold, hitalic
 
-from database import AsyncSessionLocal, create_user, get_user_by_telegram_id, update_user
+from app.database import AsyncSessionLocal, create_user, get_user_by_telegram_id, update_user
 
 logger = logging.getLogger(__name__)
 
@@ -169,26 +169,3 @@ async def handle_text_messages(message: Message, state: FSMContext):
     )
     
     await message.answer(response_text)
-
-
-def register_handlers(dp: Dispatcher):
-    """Register all handlers with the dispatcher."""
-    from quest_handlers import register_quest_handlers
-    from graph_quest_handlers import register_graph_quest_handlers
-    from town_handlers import register_town_handlers
-    from hero_handlers import register_hero_handlers
-    from combat_handlers import router as combat_router
-    from encounter_handlers import register_encounter_handlers
-    
-    # Register FSM handlers FIRST to ensure they have priority
-    register_hero_handlers(dp)
-    
-    # Then register other handlers
-    dp.include_router(router)
-    dp.include_router(combat_router)  # Add combat handlers
-    register_encounter_handlers(dp)  # Add encounter handlers
-    register_quest_handlers(dp)
-    register_graph_quest_handlers(dp)
-    register_town_handlers(dp)
-    
-    logger.info("All handlers registered successfully")

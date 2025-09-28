@@ -8,9 +8,9 @@ from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from database import Hero, Monster, HeroClass, MonsterClass
-from hero_system import HeroStats, HeroCalculator
-from monster_system import MonsterStats, MonsterCalculator
+from app.database import Hero, Monster, HeroClass, MonsterClass
+from app.core.hero_system import HeroStats, HeroCalculator
+from app.core.monster_system import MonsterStats, MonsterCalculator
 
 
 class CombatAction(Enum):

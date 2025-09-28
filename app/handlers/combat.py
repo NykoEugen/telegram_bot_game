@@ -11,7 +11,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from database import (
+from app.database import (
     get_db_session,
     get_hero_by_user_id,
     get_hero_class_by_id,
@@ -21,11 +21,11 @@ from database import (
     add_hero_experience,
     get_user_by_telegram_id,
 )
-from hero_system import HeroCalculator
-from monster_system import MonsterCalculator
-from combat_system import combat_engine, CombatAction, CombatResult
-from graph_quest_handlers import GraphQuestManager
-from keyboards import get_combat_keyboard, get_main_menu_keyboard
+from app.core.hero_system import HeroCalculator
+from app.core.monster_system import MonsterCalculator
+from app.core.combat_system import combat_engine, CombatAction, CombatResult
+from app.handlers.graph_quest import GraphQuestManager
+from app.keyboards import get_combat_keyboard, get_main_menu_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ async def start_fight_command(message: Message, state: FSMContext):
         
         # Get a random monster (for now, we'll create a simple one)
         # In a real implementation, you'd have a monster spawning system
-        from init_monsters import create_sample_monster
+        from app.initializers.monsters import create_sample_monster
         monster = await create_sample_monster(session)
         monster_class = await get_monster_class_by_id(session, monster.monster_class_id)
         

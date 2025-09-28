@@ -24,7 +24,7 @@ else:
 # Import and run the bot
 if __name__ == "__main__":
     try:
-        from bot import main
+        from app.bot import main
         import asyncio
         
         print("Starting Telegram bot...")

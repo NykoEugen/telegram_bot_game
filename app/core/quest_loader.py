@@ -3,8 +3,8 @@ Quest loader for loading quest data from JSON files.
 """
 
 import json
-import os
 import logging
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -19,12 +19,10 @@ class QuestLoader:
     def _load_quests_data(cls) -> List[Dict[str, Any]]:
         """Load quests data from JSON file."""
         if cls._quests_data is None:
-            # Get the directory of the current file
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            json_file_path = os.path.join(current_dir, 'data', 'quest_nodes.json')
-            
+            json_file_path = Path(__file__).resolve().parents[1] / "data" / "quest_nodes.json"
+
             try:
-                with open(json_file_path, 'r', encoding='utf-8') as f:
+                with json_file_path.open('r', encoding='utf-8') as f:
                     data = json.load(f)
                     cls._quests_data = data['quests']
             except FileNotFoundError:

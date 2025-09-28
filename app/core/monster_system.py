@@ -5,8 +5,9 @@ Monster system logic for calculating stats and derived attributes.
 import json
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
-from database import Monster, MonsterClass
+from app.database import Monster, MonsterClass
 
 
 @dataclass
@@ -254,15 +255,10 @@ class MonsterClasses:
     def _load_classes_data(cls) -> list[Dict[str, Any]]:
         """Load monster classes data from JSON file."""
         if cls._classes_data is None:
-            import os
-            import json
-            
-            # Get the directory of the current file
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            json_file_path = os.path.join(current_dir, 'data', 'monster_classes.json')
-            
+            json_file_path = Path(__file__).resolve().parents[1] / "data" / "monster_classes.json"
+
             try:
-                with open(json_file_path, 'r', encoding='utf-8') as f:
+                with json_file_path.open('r', encoding='utf-8') as f:
                     data = json.load(f)
                     cls._classes_data = data['monster_classes']
             except FileNotFoundError:

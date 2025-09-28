@@ -72,12 +72,13 @@ def install_dependencies():
 
 def test_setup():
     """Run the test script to verify setup."""
-    if not Path("test_bot.py").exists():
-        print("❌ test_bot.py not found")
+    test_script = Path("tests/test_bot.py")
+    if not test_script.exists():
+        print("❌ tests/test_bot.py not found")
         return False
     
     return run_command(
-        f"{sys.executable} test_bot.py",
+        f"{sys.executable} {test_script}",
         "Running setup tests"
     )
 

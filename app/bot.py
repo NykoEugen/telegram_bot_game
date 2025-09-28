@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -8,10 +7,19 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
-from config import Config
-from database import init_db
-from handlers import register_handlers
-from middleware import register_middleware
+from .config import Config
+from .database import init_db
+from .handlers import register_handlers
+from .middleware import register_middleware
+from .initializers import (
+    create_sample_quest,
+    create_dragon_quest,
+    create_mystery_quest,
+    create_starting_village,
+    create_additional_towns,
+    init_hero_classes,
+    init_monster_classes,
+)
 
 
 # Configure logging
@@ -29,41 +37,36 @@ async def on_startup(app: web.Application):
     
     # Initialize sample quests
     try:
-        from init_quests import create_sample_quest
         await create_sample_quest()
         logger.info("Sample quests initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize sample quests: {e}")
-    
+
     # Initialize graph quests
     try:
-        from init_graph_quests import create_dragon_quest, create_mystery_quest
         await create_dragon_quest()
         await create_mystery_quest()
         logger.info("Graph quests initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize graph quests: {e}")
-    
+
     # Initialize towns
     try:
-        from init_town import create_starting_village, create_additional_towns
         await create_starting_village()
         await create_additional_towns()
         logger.info("Towns initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize towns: {e}")
-    
+
     # Initialize hero classes
     try:
-        from init_hero_classes import init_hero_classes
         await init_hero_classes()
         logger.info("Hero classes initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize hero classes: {e}")
-    
+
     # Initialize monster classes
     try:
-        from init_monsters import init_monster_classes
         await init_monster_classes()
         logger.info("Monster classes initialized")
     except Exception as e:

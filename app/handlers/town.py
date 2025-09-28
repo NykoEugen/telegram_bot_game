@@ -10,7 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.markdown import hbold, hitalic
 
-from database import (
+from app.database import (
     AsyncSessionLocal,
     get_town_by_id,
     get_town_node_by_id,
@@ -28,9 +28,9 @@ from database import (
     get_graph_quest_progresses_for_user,
     get_user_graph_quest_progress
 )
-from hero_system import HeroCalculator
-from graph_quest_handlers import GraphQuestManager
-from keyboards import TownKeyboardBuilder
+from app.core.hero_system import HeroCalculator
+from app.handlers.graph_quest import GraphQuestManager
+from app.keyboards import TownKeyboardBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -659,7 +659,7 @@ async def _render_guild_board(callback: CallbackQuery, town_id: int, node_id: in
             await safe_edit_message(callback, text, builder.as_markup())
             return
 
-        from database import get_active_quests
+        from app.database import get_active_quests
         quests = await get_active_quests(session)
 
         builder = InlineKeyboardBuilder()
@@ -820,7 +820,7 @@ async def handle_barracks_monsters(callback: CallbackQuery):
     town_id = int(parts[1])
     node_id = int(parts[2])
     
-    # Get available quests from database
+    # Get available quests from app.database
     async with AsyncSessionLocal() as session:
         user, hero, hero_stats = await _ensure_hero_can_accept(
             callback,
@@ -832,7 +832,7 @@ async def handle_barracks_monsters(callback: CallbackQuery):
         if not hero:
             return
 
-        from database import get_active_quests
+        from app.database import get_active_quests
         quests = await get_active_quests(session)
         
         monsters_text = (
@@ -841,7 +841,7 @@ async def handle_barracks_monsters(callback: CallbackQuery):
             f"🔍 {hbold('Active Bounties:')}\n"
         )
         
-        # Add quests from database (filter for combat-related quests)
+        # Add quests from app.database (filter for combat-related quests)
         combat_quests = [q for q in quests if any(keyword in q.title.lower() for keyword in ['dragon', 'monster', 'beast', 'creature', 'hunt'])]
         for quest in combat_quests[:3]:
             monsters_text += f"• {quest.title} - {quest.description[:50]}...\n"
@@ -1003,9 +1003,9 @@ async def handle_square_events(callback: CallbackQuery):
     town_id = int(parts[1])
     node_id = int(parts[2])
     
-    # Get available quests from database
+    # Get available quests from app.database
     async with AsyncSessionLocal() as session:
-        from database import get_active_quests
+        from app.database import get_active_quests
         quests = await get_active_quests(session)
         
         events_text = (
@@ -1018,7 +1018,7 @@ async def handle_square_events(callback: CallbackQuery):
             f"📋 {hbold('Available Quests:')}\n"
         )
         
-        # Add quests from database (filter for general/exploration quests)
+        # Add quests from app.database (filter for general/exploration quests)
         general_quests = [q for q in quests if not any(keyword in q.title.lower() for keyword in ['dragon', 'monster', 'beast', 'creature', 'hunt', 'steal', 'thief'])]
         for quest in general_quests[:3]:
             events_text += f"• {quest.title} - {quest.description[:50]}...\n"

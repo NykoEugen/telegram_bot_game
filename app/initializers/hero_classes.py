@@ -3,8 +3,8 @@ Initialize hero classes in the database from JSON configuration.
 """
 
 import logging
-from database import get_db_session, create_hero_class, get_all_hero_classes
-from hero_system import HeroClasses
+from app.database import get_db_session, create_hero_class, get_all_hero_classes
+from app.core.hero_system import HeroClasses
 
 logger = logging.getLogger(__name__)
 

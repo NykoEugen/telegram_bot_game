@@ -4,11 +4,18 @@ Test script for combat system.
 
 import asyncio
 import logging
-from database import get_db_session, get_hero_by_user_id, get_hero_class_by_id
-from hero_system import HeroCalculator
-from monster_system import MonsterCalculator
-from combat_system import combat_engine, CombatAction, CombatResult
-from init_monsters import create_sample_monster
+import sys
+from pathlib import Path
+
+current_dir = Path(__file__).parent
+project_root = current_dir.parent
+sys.path.insert(0, str(project_root))
+
+from app.database import get_db_session, get_hero_by_user_id, get_hero_class_by_id, get_monster_class_by_id
+from app.core.hero_system import HeroCalculator
+from app.core.monster_system import MonsterCalculator
+from app.core.combat_system import combat_engine, CombatAction, CombatResult
+from app.initializers.monsters import create_sample_monster
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -99,7 +106,7 @@ async def test_combat_calculations():
     logger.info("Testing combat calculations...")
     
     # Test damage calculation
-    from combat_system import CombatCalculator
+    from app.core.combat_system import CombatCalculator
     
     attacker_stats = {'atk': 10, 'mag': 8, 'crit_chance': 15.0}
     defender_stats = {'dodge': 10.0}

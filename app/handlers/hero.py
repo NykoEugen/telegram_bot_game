@@ -11,12 +11,12 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from database import (
-    get_db_session, create_user, get_user_by_telegram_id, 
+from app.database import (
+    get_db_session, create_user, get_user_by_telegram_id,
     create_hero, get_hero_by_user_id, get_hero_class_by_id, get_all_hero_classes,
     create_hero_class, get_hero_class_by_name, Hero, HeroClass
 )
-from hero_system import HeroCalculator, HeroClasses
+from app.core.hero_system import HeroCalculator, HeroClasses
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +347,7 @@ async def start_journey(callback: CallbackQuery, state: FSMContext):
     
     async for session in get_db_session():
         # Get or create user town progress
-        from database import get_user_town_progress, create_user_town_progress, get_town_by_id, get_town_node_by_id
+        from app.database import get_user_town_progress, create_user_town_progress, get_town_by_id, get_town_node_by_id
         
         town_progress = await get_user_town_progress(session, user.id, town_id)
         
@@ -387,7 +387,7 @@ async def start_journey(callback: CallbackQuery, state: FSMContext):
         )
         
         # Get available connections
-        from database import get_town_connections
+        from app.database import get_town_connections
         connections = await get_town_connections(session, current_node.id)
         
         # Create keyboard with available actions

@@ -8,16 +8,23 @@ import os
 import sys
 from pathlib import Path
 
-# Add the current directory to Python path
+# Add project root to Python path
 current_dir = Path(__file__).parent
-sys.path.insert(0, str(current_dir))
+project_root = current_dir.parent
+sys.path.insert(0, str(project_root))
 
 async def test_database():
     """Test database connection and operations."""
     print("Testing database connection...")
     
     try:
-        from database import init_db, AsyncSessionLocal, create_user, get_user_by_telegram_id
+        from app.database import (
+            init_db,
+            AsyncSessionLocal,
+            create_user,
+            get_user_by_telegram_id,
+            User,
+        )
         
         # Initialize database
         await init_db()
@@ -26,6 +33,12 @@ async def test_database():
         # Test database operations
         async with AsyncSessionLocal() as session:
             # Test user creation
+            existing_user = await get_user_by_telegram_id(session, 12345)
+            if existing_user:
+                print("ℹ️ Test user already existed; removing for a clean run...")
+                await session.delete(existing_user)
+                await session.commit()
+
             test_user = await create_user(
                 session=session,
                 user_id=12345,
@@ -60,7 +73,7 @@ async def test_config():
         os.environ["BOT_TOKEN"] = "test_token"
         os.environ["WEBHOOK_DOMAIN"] = "test.ngrok.io"
         
-        from config import Config
+        from app.config import Config
         
         print(f"✅ BOT_TOKEN: {Config.BOT_TOKEN}")
         print(f"✅ WEBHOOK_HOST: {Config.WEBHOOK_HOST}")
