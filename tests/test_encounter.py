@@ -4,12 +4,19 @@ Test script for Encounter System.
 
 import asyncio
 import logging
-from encounter_system import (
-    encounter_engine, 
-    EncounterContext, 
-    Biome, 
-    Difficulty, 
-    EncounterType
+import sys
+from pathlib import Path
+
+current_dir = Path(__file__).parent
+project_root = current_dir.parent
+sys.path.insert(0, str(project_root))
+
+from app.core.encounter_system import (
+    encounter_engine,
+    EncounterContext,
+    Biome,
+    Difficulty,
+    EncounterType,
 )
 
 # Configure logging
@@ -101,7 +108,7 @@ async def test_encounter_rules():
     """Test encounter rules selection."""
     print("\n🧪 Testing Encounter Rules...")
     
-    from encounter_system import EncounterRules
+    from app.core.encounter_system import EncounterRules
     
     # Test rule selection for different contexts
     contexts = [

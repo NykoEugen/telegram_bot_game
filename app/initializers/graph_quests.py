@@ -4,14 +4,14 @@ Graph Quest initialization script to create sample graph-based quests.
 import asyncio
 import logging
 import json
-from database import (
+from app.database import (
     AsyncSessionLocal,
     create_quest,
     create_graph_quest_node,
     create_graph_quest_connection,
     get_quest_by_id
 )
-from quest_loader import QuestLoader
+from app.core.quest_loader import QuestLoader
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ Quest initialization script to create sample quests.
 """
 import asyncio
 import logging
-from database import (
+from app.database import (
     AsyncSessionLocal,
     create_quest,
     create_quest_node,

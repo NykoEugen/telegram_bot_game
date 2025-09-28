@@ -4,8 +4,8 @@ Initialize monster classes in the database from JSON configuration.
 
 import logging
 import random
-from database import get_db_session, create_monster_class, get_all_monster_classes, create_monster, get_monster_classes_by_difficulty
-from monster_system import MonsterClasses
+from app.database import get_db_session, create_monster_class, get_all_monster_classes, create_monster, get_monster_classes_by_difficulty
+from app.core.monster_system import MonsterClasses
 
 logger = logging.getLogger(__name__)
 

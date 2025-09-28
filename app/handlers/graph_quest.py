@@ -10,7 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.markdown import hbold, hitalic
 
-from database import (
+from app.database import (
     AsyncSessionLocal,
     get_user_by_telegram_id,
     get_graph_quest_by_id,
@@ -28,9 +28,9 @@ from database import (
     GraphQuestConnection,
     GraphQuestProgress
 )
-from hero_system import HeroCalculator
-from encounter_system import EncounterResult, EncounterType, Biome, Difficulty
-from keyboards import GraphQuestKeyboardBuilder, get_main_menu_keyboard
+from app.core.hero_system import HeroCalculator
+from app.core.encounter_system import EncounterResult, EncounterType, Biome, Difficulty
+from app.keyboards import GraphQuestKeyboardBuilder, get_main_menu_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class GraphQuestManager:
     @staticmethod
     def _get_encounter_manager():
         """Lazy import EncounterManager to avoid circular imports."""
-        from encounter_handlers import EncounterManager
+        from app.handlers.encounter import EncounterManager
         return EncounterManager
 
     @staticmethod
@@ -578,7 +578,7 @@ class GraphQuestManager:
                 return None
             
             # Get all nodes for the quest
-            from database import get_graph_quest_nodes
+            from app.database import get_graph_quest_nodes
             nodes = await get_graph_quest_nodes(session, quest_id)
             
             # Get visited nodes

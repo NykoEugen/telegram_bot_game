@@ -2,7 +2,7 @@
 Initialize the starting village with all its nodes and connections.
 """
 import logging
-from database import AsyncSessionLocal
+from app.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +12,14 @@ async def create_starting_village():
     async with AsyncSessionLocal() as session:
         try:
             # Check if village already exists
-            from database import get_town_by_id
+            from app.database import get_town_by_id
             existing_town = await get_town_by_id(session, 1)
             if existing_town:
                 logger.info("Starting village already exists, skipping creation")
                 return existing_town
             
             # Create the starting village
-            from database import create_town
+            from app.database import create_town
             village = await create_town(
                 session=session,
                 name="Greenbrook Village",
@@ -29,7 +29,7 @@ async def create_starting_village():
             logger.info(f"Created village: {village.name}")
             
             # Create town nodes
-            from database import create_town_node
+            from app.database import create_town_node
             
             # 1. Town Center (starting location)
             center = await create_town_node(
@@ -87,7 +87,7 @@ async def create_starting_village():
             logger.info(f"Created inn: {inn.name}")
             
             # Create connections between nodes
-            from database import create_town_connection
+            from app.database import create_town_connection
             
             # All nodes connect to the town center
             await create_town_connection(session, center.id, guild.id, "walk")
@@ -118,14 +118,14 @@ async def create_additional_towns():
     async with AsyncSessionLocal() as session:
         try:
             # Check if additional towns already exist
-            from database import get_town_by_id
+            from app.database import get_town_by_id
             existing_town = await get_town_by_id(session, 2)
             if existing_town:
                 logger.info("Additional towns already exist, skipping creation")
                 return
             
             # Create a larger city
-            from database import create_town
+            from app.database import create_town
             city = await create_town(
                 session=session,
                 name="Riverside City",
@@ -135,7 +135,7 @@ async def create_additional_towns():
             logger.info(f"Created city: {city.name}")
             
             # Create city nodes (more complex than village)
-            from database import create_town_node
+            from app.database import create_town_node
             
             # City center
             city_center = await create_town_node(
@@ -188,7 +188,7 @@ async def create_additional_towns():
             )
             
             # Create city connections
-            from database import create_town_connection
+            from app.database import create_town_connection
             
             # All nodes connect to city center
             await create_town_connection(session, city_center.id, city_guild.id, "walk")

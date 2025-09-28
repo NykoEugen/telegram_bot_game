@@ -9,7 +9,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.markdown import hbold, hitalic
 
-from database import (
+from app.database import (
     AsyncSessionLocal,
     get_user_by_telegram_id,
     get_quest_by_id,
@@ -20,7 +20,7 @@ from database import (
     update_quest_progress,
     get_active_quests
 )
-from keyboards import QuestKeyboardBuilder
+from app.keyboards import QuestKeyboardBuilder
 
 logger = logging.getLogger(__name__)
 

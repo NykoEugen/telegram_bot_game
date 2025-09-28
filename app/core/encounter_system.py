@@ -9,9 +9,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from database import AsyncSessionLocal, get_monster_class_by_name, get_monster_classes_by_criteria
-from hero_system import HeroCalculator
-from monster_system import MonsterCalculator
+from app.database import AsyncSessionLocal, get_monster_class_by_name, get_monster_classes_by_criteria
+from app.core.hero_system import HeroCalculator
+from app.core.monster_system import MonsterCalculator
 
 
 class EncounterType(Enum):
