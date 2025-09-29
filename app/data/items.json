@@ -1,0 +1,42 @@
+{
+  "items": [
+    {
+      "code": "healing_potion_small",
+      "name": "Мале лікувальне зілля",
+      "description": "Відновлює невелику кількість здоров'я.",
+      "icon": "🧪",
+      "effect": {
+        "type": "heal",
+        "heal_amount": 25,
+        "heal_percent": 0.0
+      },
+      "can_use_in_combat": true,
+      "can_use_outside_combat": true
+    },
+    {
+      "code": "healing_potion_medium",
+      "name": "Середнє лікувальне зілля",
+      "description": "Відновлює значну кількість здоров'я.",
+      "icon": "🧴",
+      "effect": {
+        "type": "heal",
+        "heal_amount": 40,
+        "heal_percent": 0.15
+      },
+      "can_use_in_combat": true,
+      "can_use_outside_combat": true
+    },
+    {
+      "code": "antidote",
+      "name": "Антидот",
+      "description": "Знімає отруєння та інші легкі негативні ефекти.",
+      "icon": "💉",
+      "effect": {
+        "type": "cleanse",
+        "remove_effects": ["poison", "bleed"]
+      },
+      "can_use_in_combat": true,
+      "can_use_outside_combat": true
+    }
+  ]
+}

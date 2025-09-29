@@ -47,6 +47,7 @@ class CombatState:
     monster_stats: MonsterStats
     hero_hp: int
     monster_hp: int
+    hero_id: int
     turn: int
     hero_defending: bool = False
     monster_defending: bool = False
@@ -120,6 +121,7 @@ class CombatEngine:
             monster_stats=monster_stats,
             hero_hp=hero_stats.hp_current,
             monster_hp=monster_stats.hp_current,
+            hero_id=hero.id,
             turn=1
         )
         

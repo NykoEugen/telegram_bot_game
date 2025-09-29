@@ -292,7 +292,8 @@ async def handle_encounter_combat(callback: CallbackQuery, state: FSMContext):
         quest_id=quest_id,
         node_id=node_id,
         encounter=GraphQuestManager._serialize_encounter(encounter),
-        flee_penalty_applied=False
+        flee_penalty_applied=False,
+        hero_id=combat_state.hero_id
     )
 
     encounter_message = EncounterManager.format_encounter_message(encounter)

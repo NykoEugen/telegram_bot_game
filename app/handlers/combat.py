@@ -11,6 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.database import (
     get_db_session,
@@ -20,12 +21,18 @@ from app.database import (
     get_monster_class_by_id,
     update_hero,
     add_hero_experience,
-    get_user_by_telegram_id,
+    list_hero_inventory,
+    get_item_by_code,
+    consume_hero_item,
+    get_hero_by_id,
+    get_hero_for_telegram,
 )
 from app.core.hero_system import HeroCalculator
 from app.core.monster_system import MonsterCalculator
 from app.core.combat_system import combat_engine, CombatAction, CombatResult
+from app.core.item_system import ItemEngine, InventoryItemDefinition, ItemEffectType
 from app.handlers.graph_quest import GraphQuestManager
+from app.handlers.inventory import build_overworld_inventory_view
 from app.keyboards import get_combat_keyboard, get_main_menu_keyboard
 
 logger = logging.getLogger(__name__)
@@ -57,20 +64,70 @@ async def _replace_message(
 class CombatStates(StatesGroup):
     """States for combat flow."""
     IN_COMBAT = State()
-    CHOOSING_ACTION = State()
+    CHOOSING_ITEM = State()
 
 
-async def _get_user_hero(session, telegram_user_id: int):
-    """Retrieve hero using either telegram id or internal user id."""
-    hero = await get_hero_by_user_id(session, telegram_user_id)
-    if hero:
-        return hero
+async def _show_combat_inventory(
+    callback: CallbackQuery,
+    state: FSMContext,
+    combat_state
+) -> None:
+    """Display hero inventory options during combat."""
+    inventory_entries = []
 
-    user = await get_user_by_telegram_id(session, telegram_user_id)
-    if not user:
-        return None
+    async for session in get_db_session():
+        inventory_entries = await list_hero_inventory(session, combat_state.hero_id)
+        break
 
-    return await get_hero_by_user_id(session, user.id)
+    usable_items: list[tuple[int, InventoryItemDefinition]] = []
+    for inventory_item, item_model in inventory_entries:
+        definition = ItemEngine.parse_model(item_model)
+        if definition.can_use_in_combat:
+            usable_items.append((inventory_item.quantity, definition))
+
+    builder = InlineKeyboardBuilder()
+    if usable_items:
+        lines = ["🎒 <b>Інвентар (бій)</b>", "Оберіть предмет для використання:"]
+        for quantity, definition in usable_items:
+            lines.append(f"{definition.label} ×{quantity}\n<i>{definition.description}</i>")
+            builder.button(
+                text=f"{definition.label} ×{quantity}",
+                callback_data=f"combat_use_item:{definition.code}"
+            )
+        message_text = "\n\n".join(lines)
+    else:
+        message_text = (
+            "🎒 <b>Інвентар (бій)</b>\n\n"
+            "У вас немає предметів, які можна використати під час бою."
+        )
+
+    builder.button(text="⬅️ Назад", callback_data="combat_back")
+    builder.adjust(1)
+
+    await state.set_state(CombatStates.CHOOSING_ITEM)
+    await callback.message.edit_text(message_text, reply_markup=builder.as_markup())
+    await callback.answer()
+
+
+def _compose_combat_screen(combat_state) -> str:
+    """Compose combat status text with recent log entries."""
+    status_text = combat_engine.format_combat_status(combat_state)
+    recent_log = combat_state.combat_log[-3:] if len(combat_state.combat_log) > 3 else combat_state.combat_log
+    log_text = "\n".join(recent_log) if recent_log else "Бій щойно почався."
+    return f"{status_text}\n\n📜 <b>Останні дії:</b>\n{log_text}"
+
+
+async def _send_inventory_after_flee(callback: CallbackQuery, hero_id: int) -> None:
+    """Send inventory overview to encourage healing after a successful flee."""
+    inventory_view = await build_overworld_inventory_view(hero_id, context="post_flee")
+    if not inventory_view:
+        return
+
+    text, markup = inventory_view
+    try:
+        await callback.message.answer(text, reply_markup=markup)
+    except Exception as exc:  # pragma: no cover - Telegram API errors
+        logger.warning("Failed to send inventory after flee: %s", exc)
 
 
 @router.message(Command("fight"))
@@ -84,7 +141,7 @@ async def start_fight_command(message: Message, state: FSMContext):
         return
     
     async for session in get_db_session():
-        hero = await _get_user_hero(session, user_id)
+        hero = await get_hero_for_telegram(session, user_id)
         if not hero:
             await message.answer("❌ У вас немає героя! Створіть героя командою /create_hero")
             return
@@ -110,7 +167,7 @@ async def start_fight_command(message: Message, state: FSMContext):
         
         # Set state
         await state.set_state(CombatStates.IN_COMBAT)
-        await state.update_data(monster_id=monster.id)
+        await state.update_data(monster_id=monster.id, hero_id=hero.id)
         
         # Send combat status
         status_text = combat_engine.format_combat_status(combat_state)
@@ -133,7 +190,7 @@ async def handle_combat_action(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Бій вже завершено!")
         await state.clear()
         return
-    
+
     # Map callback data to combat actions
     action_map = {
         "attack": CombatAction.ATTACK,
@@ -141,7 +198,11 @@ async def handle_combat_action(callback: CallbackQuery, state: FSMContext):
         "defend": CombatAction.DEFEND,
         "flee": CombatAction.FLEE
     }
-    
+
+    if action_data == "inventory":
+        await _show_combat_inventory(callback, state, combat_state)
+        return
+
     if action_data not in action_map:
         await callback.answer("❌ Невідома дія!")
         return
@@ -216,22 +277,118 @@ async def handle_combat_action(callback: CallbackQuery, state: FSMContext):
     combat_state.turn += 1
     combat_state.hero_defending = False
     combat_state.monster_defending = False
-    
+
     # Update combat status
-    status_text = combat_engine.format_combat_status(combat_state)
-    
-    # Show last few combat log entries
-    recent_log = combat_state.combat_log[-3:] if len(combat_state.combat_log) > 3 else combat_state.combat_log
-    log_text = "\n".join(recent_log)
-    
-    full_text = f"{status_text}\n\n📜 <b>Останні дії:</b>\n{log_text}"
-    
+    full_text = _compose_combat_screen(combat_state)
+
     await callback.message.edit_text(
         full_text,
         reply_markup=get_combat_keyboard()
     )
     await callback.answer()
 
+
+@router.callback_query(F.data == "combat_back", StateFilter(CombatStates.CHOOSING_ITEM))
+async def handle_combat_back(callback: CallbackQuery, state: FSMContext):
+    """Return from inventory view back to combat actions."""
+    user_id = callback.from_user.id
+    combat_state = combat_engine.get_combat_state(user_id)
+
+    if not combat_state:
+        await callback.answer("Бій вже завершено.", show_alert=True)
+        await state.clear()
+        return
+
+    await state.set_state(CombatStates.IN_COMBAT)
+    full_text = _compose_combat_screen(combat_state)
+
+    await callback.message.edit_text(
+        full_text,
+        reply_markup=get_combat_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("combat_use_item:"), StateFilter(CombatStates.CHOOSING_ITEM))
+async def handle_combat_use_item(callback: CallbackQuery, state: FSMContext):
+    """Apply selected inventory item and resume combat flow."""
+    user_id = callback.from_user.id
+    combat_state = combat_engine.get_combat_state(user_id)
+
+    if not combat_state:
+        await callback.answer("Бій вже завершено.", show_alert=True)
+        await state.clear()
+        return
+
+    _, item_code = callback.data.split(":", maxsplit=1)
+
+    item_model = None
+    async for session in get_db_session():
+        item_model = await get_item_by_code(session, item_code)
+        break
+
+    if not item_model:
+        await callback.answer("Предмет не знайдено.", show_alert=True)
+        return
+
+    definition = ItemEngine.parse_model(item_model)
+    if not definition.can_use_in_combat:
+        await callback.answer("Цей предмет не можна використати під час бою.", show_alert=True)
+        return
+
+    outcome = ItemEngine.apply_effect(
+        definition,
+        hp_current=combat_state.hero_hp,
+        hp_max=combat_state.hero_stats.hp_max,
+    )
+
+    if (
+        definition.effect.effect_type == ItemEffectType.HEAL
+        and outcome.hp_restored <= 0
+    ):
+        await callback.answer(outcome.description, show_alert=True)
+        return
+
+    async for session in get_db_session():
+        consumed = await consume_hero_item(session, combat_state.hero_id, definition.code)
+        if not consumed:
+            await callback.answer("Немає такого предмета в інвентарі.", show_alert=True)
+            return
+
+        hero = await get_hero_by_id(session, combat_state.hero_id)
+        if hero and outcome.new_hp is not None:
+            hero.current_hp = outcome.new_hp
+            await update_hero(session, hero)
+        break
+
+    combat_state.hero_hp = outcome.new_hp or combat_state.hero_hp
+    combat_state.hero_stats.hp_current = combat_state.hero_hp
+    combat_state.combat_log.append(outcome.as_log_entry(f"{definition.label}"))
+
+    await state.set_state(CombatStates.IN_COMBAT)
+
+    # Monster takes its turn after item usage
+    combat_state.hero_defending = False
+    combat_state.monster_defending = False
+
+    monster_result = combat_engine.execute_monster_action(user_id)
+    if monster_result:
+        combat_state.combat_log.append(monster_result.message)
+
+    combat_result = combat_engine.check_combat_end(user_id)
+    if combat_result == CombatResult.MONSTER_WIN:
+        await handle_combat_defeat(callback, state, combat_state)
+        return
+
+    combat_state.turn += 1
+
+    full_text = _compose_combat_screen(combat_state)
+
+    await callback.message.edit_text(
+        full_text,
+        reply_markup=get_combat_keyboard()
+    )
+    await callback.answer("Предмет використано!")
 
 async def handle_combat_victory(callback: CallbackQuery, state: FSMContext, combat_state):
     """Handle combat victory."""
@@ -255,7 +412,7 @@ async def handle_combat_victory(callback: CallbackQuery, state: FSMContext, comb
 
     # Update hero with (possibly boosted) rewards
     async for session in get_db_session():
-        hero = await _get_user_hero(session, user_id)
+        hero = await get_hero_for_telegram(session, user_id)
         if hero:
             hero = await add_hero_experience(session, hero, rewards['experience'])
             hero.current_hp = combat_state.hero_hp
@@ -323,7 +480,7 @@ async def handle_combat_defeat(callback: CallbackQuery, state: FSMContext, comba
 
     # Update hero's HP to 1 (not dead, just defeated)
     async for session in get_db_session():
-        hero = await _get_user_hero(session, user_id)
+        hero = await get_hero_for_telegram(session, user_id)
         if hero:
             hero.current_hp = 1  # Leave hero with 1 HP
             await update_hero(session, hero)
@@ -414,6 +571,7 @@ async def handle_combat_flee(callback: CallbackQuery, state: FSMContext, combat_
                 "🏃 Ви відступили. Поверніться, коли будете готові продовжити пригоду.",
                 get_main_menu_keyboard(),
             )
+        await _send_inventory_after_flee(callback, combat_state.hero_id)
         await callback.answer()
         return
 
@@ -436,6 +594,7 @@ async def handle_combat_flee(callback: CallbackQuery, state: FSMContext, combat_
     # Clear combat state
     combat_engine.end_combat(callback.from_user.id)
     await state.clear()
+    await _send_inventory_after_flee(callback, combat_state.hero_id)
     await callback.answer()
 
 
