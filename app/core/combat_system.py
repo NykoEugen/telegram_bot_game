@@ -51,7 +51,8 @@ class CombatState:
     hero_defending: bool = False
     monster_defending: bool = False
     combat_log: List[str] = None
-    
+    hero_fled: bool = False
+
     def __post_init__(self):
         if self.combat_log is None:
             self.combat_log = []
@@ -151,7 +152,7 @@ class CombatEngine:
         if action == CombatAction.FLEE:
             # 70% chance to flee successfully
             if random.random() < 0.7:
-                del self.active_combats[user_id]
+                combat_state.hero_fled = True
                 return CombatActionResult(
                     attacker="hero",
                     action=action,
@@ -311,11 +312,15 @@ class CombatEngine:
         if combat_state.hero_hp <= 0:
             del self.active_combats[user_id]
             return CombatResult.MONSTER_WIN
-        
+
         if combat_state.monster_hp <= 0:
             del self.active_combats[user_id]
             return CombatResult.HERO_WIN
-        
+
+        if combat_state.hero_fled:
+            del self.active_combats[user_id]
+            return CombatResult.HERO_FLEE
+
         return CombatResult.ONGOING
     
     def get_combat_state(self, user_id: int) -> Optional[CombatState]:

@@ -176,7 +176,7 @@ async def cmd_quests(message: Message):
             })
         
         # Use GraphQuestKeyboardBuilder for all quests
-        from keyboards import GraphQuestKeyboardBuilder
+        from app.keyboards import GraphQuestKeyboardBuilder
         keyboard = GraphQuestKeyboardBuilder.graph_quest_list_keyboard(quest_list)
         
         quest_text = f"{hbold('Available Quests')}\n\n"
@@ -208,8 +208,8 @@ async def cmd_quest(message: Message):
     
     # Try to start as graph quest first (for quests with ID >= 2)
     if quest_id >= 1:
-        from graph_quest_handlers import GraphQuestManager
-        from keyboards import GraphQuestKeyboardBuilder
+        from app.handlers.graph_quest import GraphQuestManager
+        from app.keyboards import GraphQuestKeyboardBuilder
         
         quest_data = await GraphQuestManager.start_graph_quest(user_id, quest_id)
         
@@ -246,8 +246,8 @@ async def handle_quest_start(callback: CallbackQuery):
     
     # Try to start as graph quest first (for quests with ID >= 2)
     if quest_id >= 1:
-        from graph_quest_handlers import GraphQuestManager
-        from keyboards import GraphQuestKeyboardBuilder
+        from app.handlers.graph_quest import GraphQuestManager
+        from app.keyboards import GraphQuestKeyboardBuilder
         
         quest_data = await GraphQuestManager.start_graph_quest(user_id, quest_id)
         
@@ -314,7 +314,7 @@ async def handle_quest_accept(callback: CallbackQuery):
     if result.get('completed'):
         # Quest completed - show rewards screen
         # Import here to avoid circular imports
-        from town_handlers import show_quest_rewards
+        from app.handlers.town import show_quest_rewards
         await show_quest_rewards(callback, quest.title, current_node.description)
         return
     else:

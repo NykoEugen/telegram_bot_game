@@ -6,7 +6,8 @@ import logging
 from typing import Optional
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -34,6 +35,23 @@ router = Router()
 
 QUEST_ENCOUNTER_BONUS_XP = 0.3  # 30% bonus exp for quest combat victories
 QUEST_ENCOUNTER_BONUS_GOLD = 0.25  # 25% bonus gold for quest combat victories
+
+
+async def _replace_message(
+    callback: CallbackQuery,
+    text: str,
+    keyboard: Optional[InlineKeyboardMarkup] = None,
+) -> None:
+    """Safely replace callback message text and markup, falling back to new message."""
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
+
+    try:
+        await callback.message.edit_text(text, reply_markup=keyboard)
+    except TelegramBadRequest:
+        await callback.message.answer(text, reply_markup=keyboard)
 
 
 class CombatStates(StatesGroup):
@@ -264,11 +282,12 @@ async def handle_combat_victory(callback: CallbackQuery, state: FSMContext, comb
         await state.clear()
 
         if outcome:
-            await callback.message.edit_text(outcome['text'], reply_markup=outcome['keyboard'])
+            await _replace_message(callback, outcome['text'], outcome['keyboard'])
         else:
-            await callback.message.edit_text(
+            await _replace_message(
+                callback,
                 "🎉 Перемога! Продовжуйте пригоду.",
-                reply_markup=get_main_menu_keyboard()
+                get_main_menu_keyboard(),
             )
         await callback.answer()
         return
@@ -285,9 +304,10 @@ async def handle_combat_victory(callback: CallbackQuery, state: FSMContext, comb
 ❤️ HP після бою: {combat_state.hero_hp}/{combat_state.hero_stats.hp_max}
 """
 
-    await callback.message.edit_text(
+    await _replace_message(
+        callback,
         victory_text,
-        reply_markup=get_main_menu_keyboard()
+        get_main_menu_keyboard(),
     )
 
     # Clear combat state
@@ -324,11 +344,12 @@ async def handle_combat_defeat(callback: CallbackQuery, state: FSMContext, comba
         await state.clear()
 
         if outcome:
-            await callback.message.edit_text(outcome['text'], reply_markup=outcome['keyboard'])
+            await _replace_message(callback, outcome['text'], outcome['keyboard'])
         else:
-            await callback.message.edit_text(
+            await _replace_message(
+                callback,
                 "💀 Ви зазнали поразки. Відновіться перед новою спробою.",
-                reply_markup=get_main_menu_keyboard()
+                get_main_menu_keyboard(),
             )
         await callback.answer()
         return
@@ -344,9 +365,10 @@ async def handle_combat_defeat(callback: CallbackQuery, state: FSMContext, comba
 Спробуйте ще раз, коли будете готові!
 """
 
-    await callback.message.edit_text(
+    await _replace_message(
+        callback,
         defeat_text,
-        reply_markup=get_main_menu_keyboard()
+        get_main_menu_keyboard(),
     )
 
     # Clear combat state
@@ -385,11 +407,12 @@ async def handle_combat_flee(callback: CallbackQuery, state: FSMContext, combat_
         await state.clear()
 
         if outcome:
-            await callback.message.edit_text(outcome['text'], reply_markup=outcome['keyboard'])
+            await _replace_message(callback, outcome['text'], outcome['keyboard'])
         else:
-            await callback.message.edit_text(
+            await _replace_message(
+                callback,
                 "🏃 Ви відступили. Поверніться, коли будете готові продовжити пригоду.",
-                reply_markup=get_main_menu_keyboard()
+                get_main_menu_keyboard(),
             )
         await callback.answer()
         return
@@ -404,9 +427,10 @@ async def handle_combat_flee(callback: CallbackQuery, state: FSMContext, combat_
 Іноді розумність важливіша за хоробрість!
 """
 
-    await callback.message.edit_text(
+    await _replace_message(
+        callback,
         flee_text,
-        reply_markup=get_main_menu_keyboard()
+        get_main_menu_keyboard(),
     )
 
     # Clear combat state

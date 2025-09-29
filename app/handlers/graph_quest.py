@@ -116,6 +116,40 @@ class GraphQuestManager:
         )
 
     @staticmethod
+    def _resolve_previous_node_id(
+        progress: GraphQuestProgress,
+        node_id: int,
+        state: Dict[str, Any]
+    ) -> Optional[int]:
+        """Determine the most plausible previous node for retreat logic."""
+        prev_node_id = state.get('previous_node')
+        if isinstance(prev_node_id, int) and prev_node_id != node_id:
+            return prev_node_id
+
+        visited_nodes: List[int] = []
+        try:
+            raw_visited = json.loads(progress.visited_nodes or "[]")
+            if isinstance(raw_visited, list):
+                visited_nodes = [n for n in raw_visited if isinstance(n, int)]
+        except json.JSONDecodeError:
+            logger.warning(
+                "Invalid visited_nodes JSON for progress %s during flee handling.",
+                progress.id
+            )
+
+        if visited_nodes:
+            for idx in range(len(visited_nodes) - 1, -1, -1):
+                if visited_nodes[idx] == node_id:
+                    if idx > 0:
+                        return visited_nodes[idx - 1]
+                    break
+
+            if visited_nodes[-1] != node_id:
+                return visited_nodes[-1]
+
+        return None
+
+    @staticmethod
     def _get_encounter_manager():
         """Lazy import EncounterManager to avoid circular imports."""
         from app.handlers.encounter import EncounterManager
@@ -500,12 +534,37 @@ class GraphQuestManager:
                 keyboard = get_main_menu_keyboard()
 
             elif outcome == 'flee_success':
-                prev_node_id = quest_state.get('previous_node') or node_id
+                prev_node_id = GraphQuestManager._resolve_previous_node_id(
+                    progress,
+                    node_id,
+                    quest_state
+                )
+
+                if not prev_node_id:
+                    prev_node_id = node_id
+
+                try:
+                    visited_nodes = json.loads(progress.visited_nodes or "[]")
+                except json.JSONDecodeError:
+                    visited_nodes = []
+
+                if (
+                    isinstance(visited_nodes, list)
+                    and visited_nodes
+                    and visited_nodes[-1] == node_id
+                ):
+                    visited_nodes = visited_nodes[:-1]
+                    progress.visited_nodes = json.dumps(visited_nodes)
+
                 quest_state['active_encounter'] = None
                 quest_state['recovery_node'] = node_id
                 quest_state['previous_node'] = prev_node_id
                 progress = await GraphQuestManager._save_progress_state(session, progress, quest_state)
-                await update_graph_quest_progress(session, progress, current_node_id=prev_node_id)
+                progress = await update_graph_quest_progress(
+                    session,
+                    progress,
+                    current_node_id=prev_node_id
+                )
 
                 prev_node = await get_graph_quest_node_by_id(session, prev_node_id)
                 prev_connections = await get_graph_quest_connections(session, prev_node_id)
@@ -746,7 +805,7 @@ async def handle_graph_quest_choice(callback: CallbackQuery):
     if result.get('completed'):
         # Quest completed - show rewards screen
         # Import here to avoid circular imports
-        from town_handlers import show_quest_rewards
+        from app.handlers.town import show_quest_rewards
         await show_quest_rewards(callback, quest.title, current_node.description)
         return
     elif encounter:

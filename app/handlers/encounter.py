@@ -20,8 +20,8 @@ from app.database import (
     create_monster
 )
 from app.core.encounter_system import encounter_engine, EncounterResult
-from app.core.combat_system import combat_engine, CombatAction
-from app.handlers.combat import CombatStates
+from app.core.combat_system import combat_engine, CombatAction, CombatResult
+from app.handlers.combat import CombatStates, handle_combat_flee
 from app.handlers.graph_quest import GraphQuestManager
 from app.keyboards import CombatKeyboardBuilder, get_combat_keyboard
 
@@ -306,7 +306,7 @@ async def handle_encounter_combat(callback: CallbackQuery, state: FSMContext):
 
 
 @encounter_router.callback_query(F.data.startswith("encounter_flee:"))
-async def handle_encounter_flee(callback: CallbackQuery):
+async def handle_encounter_flee(callback: CallbackQuery, state: FSMContext):
     """Handle encounter flee callback."""
     user_id = callback.from_user.id
     
@@ -318,20 +318,25 @@ async def handle_encounter_flee(callback: CallbackQuery):
     
     # Try to flee
     flee_result = combat_engine.execute_hero_action(user_id, CombatAction.FLEE)
-    
-    if flee_result and "успішно втік" in flee_result.message:
-        # Successfully fled
-        await callback.message.edit_text(
-            f"🏃 {hbold('Втеча!')}\n\n"
-            f"Вам вдалося покинути бій."
-        )
-    else:
-        # Failed to flee, show combat status
-        combat_status = combat_engine.format_combat_status(combat_state)
-        keyboard = get_combat_keyboard()
-        
-        await callback.message.edit_text(combat_status, reply_markup=keyboard)
-    
+    if not flee_result:
+        await callback.answer("❌ Не вдалося виконати втечу.", show_alert=True)
+        return
+
+    combat_state.combat_log.append(flee_result.message)
+
+    combat_result = combat_engine.check_combat_end(user_id)
+    if combat_result == CombatResult.HERO_FLEE:
+        await handle_combat_flee(callback, state, combat_state)
+        return
+
+    if combat_result == CombatResult.MONSTER_WIN:
+        await callback.answer("⚠️ Герой впав у бою.", show_alert=True)
+        return
+
+    combat_status = combat_engine.format_combat_status(combat_state)
+    keyboard = get_combat_keyboard()
+
+    await callback.message.edit_text(combat_status, reply_markup=keyboard)
     await callback.answer()
 
 
