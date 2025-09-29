@@ -767,16 +767,22 @@ class CombatKeyboardBuilder:
             text="🛡️ Defend",
             callback_data="combat_defend"
         )
-        
+
+        # Inventory button
+        builder.button(
+            text="🎒 Inventory",
+            callback_data="combat_inventory"
+        )
+
         # Flee button
         builder.button(
             text="🏃 Flee",
             callback_data="combat_flee"
         )
-        
+
         # Adjust layout to 2 buttons per row
-        builder.adjust(2, 2)
-        
+        builder.adjust(2, 2, 1)
+
         return builder.as_markup()
     
     @staticmethod

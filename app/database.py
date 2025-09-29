@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import create_engine, select, UniqueConstraint
+from sqlalchemy import create_engine, select, UniqueConstraint, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import text
@@ -717,6 +717,43 @@ class Hero(Base):
         return f"<Hero(id={self.id}, user_id={self.user_id}, name={self.name}, level={self.level})>"
 
 
+class Item(Base):
+    """Item definition that can be stored in hero inventories."""
+    __tablename__ = "items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(unique=True, index=True)
+    name: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str] = mapped_column(nullable=False)
+    icon: Mapped[Optional[str]] = mapped_column(nullable=True)
+    effect_data: Mapped[str] = mapped_column(nullable=False)
+    can_use_in_combat: Mapped[bool] = mapped_column(default=True)
+    can_use_outside_combat: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    updated_at: Mapped[str] = mapped_column(nullable=False)
+
+    def __repr__(self):
+        return f"<Item(code={self.code}, name={self.name})>"
+
+
+class HeroInventoryItem(Base):
+    """Hero inventory entry linking heroes to items and quantities."""
+    __tablename__ = "hero_inventory"
+    __table_args__ = (
+        UniqueConstraint('hero_id', 'item_id', name='uq_hero_item'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    hero_id: Mapped[int] = mapped_column(ForeignKey("heroes.id"), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id"), index=True)
+    quantity: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    updated_at: Mapped[str] = mapped_column(nullable=False)
+
+    def __repr__(self):
+        return f"<HeroInventoryItem(hero_id={self.hero_id}, item_id={self.item_id}, quantity={self.quantity})>"
+
+
 # Town/Location system models
 class Town(Base):
     """Town model for storing town/location information."""
@@ -1112,6 +1149,27 @@ async def get_hero_by_user_id(session: AsyncSession, user_id: int) -> Optional[H
     return result.scalar_one_or_none()
 
 
+async def get_hero_by_id(session: AsyncSession, hero_id: int) -> Optional[Hero]:
+    """Get hero by primary key."""
+    result = await session.execute(
+        select(Hero).where(Hero.id == hero_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_hero_for_telegram(session: AsyncSession, telegram_user_id: int) -> Optional[Hero]:
+    """Convenience helper to fetch hero using Telegram user id."""
+    hero = await get_hero_by_user_id(session, telegram_user_id)
+    if hero:
+        return hero
+
+    user = await get_user_by_telegram_id(session, telegram_user_id)
+    if not user:
+        return None
+
+    return await get_hero_by_user_id(session, user.id)
+
+
 async def update_hero(session: AsyncSession, hero: Hero) -> Hero:
     """Update hero information."""
     from datetime import datetime
@@ -1126,7 +1184,7 @@ async def update_hero(session: AsyncSession, hero: Hero) -> Hero:
 async def add_hero_experience(session: AsyncSession, hero: Hero, experience: int) -> Hero:
     """Add experience to hero and handle level ups."""
     import json
-    
+
     hero.experience += experience
     
     # Check for level ups
@@ -1159,6 +1217,180 @@ async def add_hero_experience(session: AsyncSession, hero: Hero, experience: int
     return await update_hero(session, hero)
 
 
+# Inventory-related database functions
+async def get_item_by_code(session: AsyncSession, code: str) -> Optional[Item]:
+    """Fetch an item definition by its unique code."""
+    result = await session.execute(
+        select(Item).where(Item.code == code)
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_items(session: AsyncSession) -> list[Item]:
+    """Return all registered items."""
+    result = await session.execute(select(Item))
+    return list(result.scalars().all())
+
+
+async def upsert_item(
+    session: AsyncSession,
+    code: str,
+    name: str,
+    description: str,
+    effect_data: str,
+    icon: Optional[str] = None,
+    can_use_in_combat: bool = True,
+    can_use_outside_combat: bool = True,
+) -> Item:
+    """Create or update an item definition."""
+    from datetime import datetime
+
+    item = await get_item_by_code(session, code)
+    now = datetime.utcnow().isoformat()
+
+    if item:
+        item.name = name
+        item.description = description
+        item.effect_data = effect_data
+        item.icon = icon
+        item.can_use_in_combat = can_use_in_combat
+        item.can_use_outside_combat = can_use_outside_combat
+        item.updated_at = now
+    else:
+        item = Item(
+            code=code,
+            name=name,
+            description=description,
+            icon=icon,
+            effect_data=effect_data,
+            can_use_in_combat=can_use_in_combat,
+            can_use_outside_combat=can_use_outside_combat,
+            created_at=now,
+            updated_at=now,
+        )
+
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def get_hero_inventory_item(
+    session: AsyncSession,
+    hero_id: int,
+    item_id: int
+) -> Optional[HeroInventoryItem]:
+    """Fetch a hero inventory entry for a specific item."""
+    result = await session.execute(
+        select(HeroInventoryItem).where(
+            HeroInventoryItem.hero_id == hero_id,
+            HeroInventoryItem.item_id == item_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_hero_inventory(
+    session: AsyncSession,
+    hero_id: int
+) -> list[tuple[HeroInventoryItem, Item]]:
+    """Return all inventory entries for a hero along with item definitions."""
+    result = await session.execute(
+        select(HeroInventoryItem, Item)
+        .join(Item, HeroInventoryItem.item_id == Item.id)
+        .where(HeroInventoryItem.hero_id == hero_id)
+        .order_by(Item.name.asc())
+    )
+    return list(result.all())
+
+
+async def add_item_to_hero(
+    session: AsyncSession,
+    hero_id: int,
+    item_code: str,
+    quantity: int = 1
+) -> Optional[HeroInventoryItem]:
+    """Add an item to hero's inventory."""
+    from datetime import datetime
+
+    if quantity <= 0:
+        return None
+
+    item = await get_item_by_code(session, item_code)
+    if not item:
+        return None
+
+    inventory_item = await get_hero_inventory_item(session, hero_id, item.id)
+    now = datetime.utcnow().isoformat()
+
+    if inventory_item:
+        inventory_item.quantity += quantity
+        inventory_item.updated_at = now
+    else:
+        inventory_item = HeroInventoryItem(
+            hero_id=hero_id,
+            item_id=item.id,
+            quantity=quantity,
+            created_at=now,
+            updated_at=now,
+        )
+
+    session.add(inventory_item)
+    await session.commit()
+    await session.refresh(inventory_item)
+    return inventory_item
+
+
+async def consume_hero_item(
+    session: AsyncSession,
+    hero_id: int,
+    item_code: str,
+    quantity: int = 1
+) -> bool:
+    """Consume a quantity of an item from hero's inventory."""
+    from datetime import datetime
+
+    if quantity <= 0:
+        return False
+
+    item = await get_item_by_code(session, item_code)
+    if not item:
+        return False
+
+    inventory_item = await get_hero_inventory_item(session, hero_id, item.id)
+    if not inventory_item or inventory_item.quantity < quantity:
+        return False
+
+    inventory_item.quantity -= quantity
+    if inventory_item.quantity == 0:
+        await session.delete(inventory_item)
+    else:
+        inventory_item.updated_at = datetime.utcnow().isoformat()
+        session.add(inventory_item)
+
+    await session.commit()
+    return True
+
+
+async def ensure_hero_has_item(
+    session: AsyncSession,
+    hero_id: int,
+    item_code: str,
+    minimum_quantity: int = 1
+) -> None:
+    """Ensure hero has at least the specified quantity of an item."""
+    item = await get_item_by_code(session, item_code)
+    if not item:
+        return
+
+    inventory_item = await get_hero_inventory_item(session, hero_id, item.id)
+    if not inventory_item:
+        await add_item_to_hero(session, hero_id, item_code, minimum_quantity)
+        return
+
+    shortfall = max(0, minimum_quantity - inventory_item.quantity)
+    if shortfall > 0:
+        await add_item_to_hero(session, hero_id, item_code, shortfall)
 # Monster-related database functions
 async def create_monster_class(
     session: AsyncSession,

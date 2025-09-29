@@ -19,6 +19,7 @@ from .initializers import (
     create_additional_towns,
     init_hero_classes,
     init_monster_classes,
+    init_items,
 )
 
 
@@ -71,6 +72,13 @@ async def on_startup(app: web.Application):
         logger.info("Monster classes initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize monster classes: {e}")
+
+    # Initialize item definitions
+    try:
+        await init_items()
+        logger.info("Items initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize items: {e}")
 
 
 async def on_shutdown(app: web.Application):

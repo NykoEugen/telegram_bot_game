@@ -14,7 +14,8 @@ from aiogram.fsm.state import State, StatesGroup
 from app.database import (
     get_db_session, create_user, get_user_by_telegram_id,
     create_hero, get_hero_by_user_id, get_hero_class_by_id, get_all_hero_classes,
-    create_hero_class, get_hero_class_by_name, Hero, HeroClass
+    create_hero_class, get_hero_class_by_name, Hero, HeroClass,
+    add_item_to_hero, get_item_by_code
 )
 from app.core.hero_system import HeroCalculator, HeroClasses
 
@@ -277,27 +278,48 @@ async def confirm_hero_creation(callback: CallbackQuery, state: FSMContext):
                 hero_class_id=class_id,
                 name=hero_name
             )
-            
+
             # Get hero class for stats display
             hero_class = await get_hero_class_by_id(session, class_id)
             if hero_class:
                 hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
                 stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
-                
+
+                # Grant starter items
+                starter_items_summary: list[str] = []
+                starter_items = [
+                    ("healing_potion_small", 3),
+                    ("antidote", 1),
+                ]
+
+                for code, qty in starter_items:
+                    granted = await add_item_to_hero(session, hero.id, code, qty)
+                    if granted:
+                        item_def = await get_item_by_code(session, code)
+                        if item_def:
+                            icon = item_def.icon or "🎒"
+                            starter_items_summary.append(f"{icon} {item_def.name} x{qty}")
+
+                inventory_note = ""
+                if starter_items_summary:
+                    inventory_note = (
+                        "\n\n🎒 <b>Стартові предмети:</b>\n" + "\n".join(starter_items_summary)
+                    )
+
                 # Create keyboard with "Start Journey" button
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🗺️ Розпочати подорож", callback_data="start_journey")]
                 ])
-                
+
                 try:
                     await callback.message.edit_text(
-                        f"🎉 <b>Герой успішно створений!</b>\n\n{stats_text}",
+                        f"🎉 <b>Герой успішно створений!</b>\n\n{stats_text}{inventory_note}",
                         reply_markup=keyboard
                     )
                 except Exception as e:
                     logger.warning(f"Could not edit message, sending new one: {e}")
                     await callback.message.answer(
-                        f"🎉 <b>Герой успішно створений!</b>\n\n{stats_text}",
+                        f"🎉 <b>Герой успішно створений!</b>\n\n{stats_text}{inventory_note}",
                         reply_markup=keyboard
                     )
             else:
