@@ -137,9 +137,12 @@ async def build_overworld_inventory_view(
 async def inventory_close_callback(callback: CallbackQuery):
     """Close inventory message."""
     try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+        await callback.message.delete()
+    except TelegramBadRequest:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest:
+            pass
     await callback.answer()
 
 

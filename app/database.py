@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import AsyncGenerator, Optional
 
-from sqlalchemy import create_engine, select, UniqueConstraint, ForeignKey
+from sqlalchemy import create_engine, select, delete, UniqueConstraint, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import text
@@ -289,6 +289,14 @@ async def get_quest_by_id(session: AsyncSession, quest_id: int) -> Optional[Ques
     return result.scalar_one_or_none()
 
 
+async def get_quest_by_title(session: AsyncSession, title: str) -> Optional[Quest]:
+    """Get quest by title."""
+    result = await session.execute(
+        select(Quest).where(Quest.title == title)
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_quest_node_by_id(session: AsyncSession, node_id: int) -> Optional[QuestNode]:
     """Get quest node by ID."""
     result = await session.execute(
@@ -481,6 +489,35 @@ async def get_graph_quest_connections(session: AsyncSession, from_node_id: int) 
         ).order_by(GraphQuestConnection.order)
     )
     return list(result.scalars().all())
+
+
+async def delete_graph_quest_structure(session: AsyncSession, quest_id: int) -> None:
+    """Delete all graph quest nodes, connections, and progress for a quest."""
+    node_ids_subquery = select(GraphQuestNode.id).where(GraphQuestNode.quest_id == quest_id)
+
+    # Remove connections referencing the quest nodes
+    await session.execute(
+        delete(GraphQuestConnection).where(
+            GraphQuestConnection.from_node_id.in_(node_ids_subquery)
+        )
+    )
+    await session.execute(
+        delete(GraphQuestConnection).where(
+            GraphQuestConnection.to_node_id.in_(node_ids_subquery)
+        )
+    )
+
+    # Remove quest progress tied to these nodes
+    await session.execute(
+        delete(GraphQuestProgress).where(GraphQuestProgress.quest_id == quest_id)
+    )
+
+    # Finally remove the quest nodes themselves
+    await session.execute(
+        delete(GraphQuestNode).where(GraphQuestNode.quest_id == quest_id)
+    )
+
+    await session.commit()
 
 
 async def get_graph_quest_nodes(session: AsyncSession, quest_id: int) -> list[GraphQuestNode]:
