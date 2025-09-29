@@ -279,6 +279,538 @@
           "order": 3
         }
       ]
+    },
+    {
+      "id": 2,
+      "title": "Echoes of the Moonwell: The Lost Sigil",
+      "description": "The guild entrusts you with recovering a stolen Moonwell sigil. Retrieve it discreetly to begin restoring the sacred spring.",
+      "nodes": [
+        {
+          "id": "moonwell_start",
+          "type": "start",
+          "title": "Summoned to the Moonwell",
+          "description": "Guildmistress Serelis unfurls a fading map of the Moonwell. A crucial sigil was stolen by smugglers, and without it the well cannot be sealed. She asks you to track it down in the city of silver tents.",
+          "is_start": true,
+          "is_final": false
+        },
+        {
+          "id": "bazaar_hunt",
+          "type": "choice",
+          "title": "Moonlit Bazaar",
+          "description": "The bazaar hums with whispers about the stolen sigil. Lanterns sway overhead while informants barter in half-truths.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "city",
+            "difficulty": "normal",
+            "type": "fetch",
+            "special_tags": ["investigation"]
+          }
+        },
+        {
+          "id": "archive_clues",
+          "type": "choice",
+          "title": "Moonlit Archives",
+          "description": "Dusty ledgers chart every relic that ever touched the Moonwell. Scholars recall a masked patron who asked too many questions last night.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "library",
+            "difficulty": "easy",
+            "type": "fetch",
+            "special_tags": ["research"]
+          }
+        },
+        {
+          "id": "shadow_broker",
+          "type": "choice",
+          "title": "Shadow Broker's Offer",
+          "description": "A veiled broker admits the sigil changed hands. For the right price—or the right leverage—they will reveal the cache.",
+          "is_start": false,
+          "is_final": false
+        },
+        {
+          "id": "trade_agreement",
+          "type": "action",
+          "title": "Paying in Favors",
+          "description": "You promise the broker a future favor. They slide an etched shard across the table—coordinates to the sigil's hiding place.",
+          "is_start": false,
+          "is_final": false
+        },
+        {
+          "id": "swift_heist",
+          "type": "action",
+          "title": "Swift Heist",
+          "description": "You stalk the smugglers' roost and slip the sigil free before their sentries can react.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "city",
+            "difficulty": "hard",
+            "type": "fetch",
+            "special_tags": ["stealth"]
+          }
+        },
+        {
+          "id": "sigil_safe",
+          "type": "ending",
+          "title": "Sigil Recovered",
+          "description": "The Moonwell sigil pulses warmly in your grip. Serelis smiles with relief—this is the first step toward healing the sacred spring.",
+          "is_start": false,
+          "is_final": true
+        }
+      ],
+      "connections": [
+        {
+          "from": "moonwell_start",
+          "to": "bazaar_hunt",
+          "type": "choice",
+          "choice_text": "Inspect the moonlit bazaar",
+          "order": 1
+        },
+        {
+          "from": "moonwell_start",
+          "to": "archive_clues",
+          "type": "choice",
+          "choice_text": "Consult the Moonwell archives",
+          "order": 2
+        },
+        {
+          "from": "bazaar_hunt",
+          "to": "shadow_broker",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "archive_clues",
+          "to": "shadow_broker",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "shadow_broker",
+          "to": "trade_agreement",
+          "type": "choice",
+          "choice_text": "Promise the broker a favor",
+          "order": 1
+        },
+        {
+          "from": "shadow_broker",
+          "to": "swift_heist",
+          "type": "choice",
+          "choice_text": "Steal the sigil yourself",
+          "order": 2
+        },
+        {
+          "from": "trade_agreement",
+          "to": "sigil_safe",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "swift_heist",
+          "to": "sigil_safe",
+          "type": "default",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Echoes of the Moonwell: Cipher of Tides",
+      "description": "With the sigil recovered, you must decode the Moonwell's ancient cipher to unlock its protective wards.",
+      "nodes": [
+        {
+          "id": "cipher_start",
+          "type": "start",
+          "title": "Sigil Resonance",
+          "description": "The recovered sigil hums against your palm. Its patterns shift like tides—Serelis believes a riddle is woven within.",
+          "is_start": true,
+          "is_final": false
+        },
+        {
+          "id": "rune_chamber",
+          "type": "choice",
+          "title": "Hall of Runes",
+          "description": "Moonlight spills over rune pillars, each echoing the sigil's glow. Whispered glyphs reveal fragments of the cipher.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "ruins",
+            "difficulty": "normal",
+            "type": "puzzle",
+            "special_tags": ["lore"]
+          }
+        },
+        {
+          "id": "dream_pool",
+          "type": "choice",
+          "title": "Dream Pool",
+          "description": "You gaze into the Moonwell's memories. Visions of past guardians repeat the cipher in lilting tones.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "sanctum",
+            "difficulty": "easy",
+            "type": "puzzle",
+            "special_tags": ["insight"]
+          }
+        },
+        {
+          "id": "tidal_riddle",
+          "type": "choice",
+          "title": "Tidal Riddle",
+          "description": "Three tidal phrases surface: \"Stone that remembers,\" \"Wave that binds,\" and \"Silence that listens.\" Only one awakens the sigil fully.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "sanctum",
+            "difficulty": "normal",
+            "type": "puzzle",
+            "special_tags": ["riddle"]
+          }
+        },
+        {
+          "id": "cipher_confused",
+          "type": "action",
+          "title": "Ripple of Doubt",
+          "description": "The sigil flickers, rejecting your attempt. Serelis encourages another approach before the resonance fades.",
+          "is_start": false,
+          "is_final": false
+        },
+        {
+          "id": "cipher_resolved",
+          "type": "ending",
+          "title": "Cipher Completed",
+          "description": "The phrase \"Silence that listens\" settles over the sigil. Wards flare to life, revealing the Moonwell's hidden path forward.",
+          "is_start": false,
+          "is_final": true
+        }
+      ],
+      "connections": [
+        {
+          "from": "cipher_start",
+          "to": "rune_chamber",
+          "type": "choice",
+          "choice_text": "Study the rune pillars",
+          "order": 1
+        },
+        {
+          "from": "cipher_start",
+          "to": "dream_pool",
+          "type": "choice",
+          "choice_text": "Gaze into the dream pool",
+          "order": 2
+        },
+        {
+          "from": "rune_chamber",
+          "to": "tidal_riddle",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "dream_pool",
+          "to": "tidal_riddle",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "tidal_riddle",
+          "to": "cipher_resolved",
+          "type": "choice",
+          "choice_text": "Whisper 'Silence that listens'",
+          "order": 1
+        },
+        {
+          "from": "tidal_riddle",
+          "to": "cipher_confused",
+          "type": "choice",
+          "choice_text": "Invoke another phrase",
+          "order": 2
+        },
+        {
+          "from": "cipher_confused",
+          "to": "tidal_riddle",
+          "type": "default",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Echoes of the Moonwell: Guardian's Passage",
+      "description": "Lyren, the Moonwell's oracle, must reach the sanctum. Safely escort them through hostile territory.",
+      "nodes": [
+        {
+          "id": "escort_start",
+          "type": "start",
+          "title": "Oracle's Plea",
+          "description": "Lyren grips the awakened sigil. They need your protection to reach the Moonwell and weave the restoration ritual.",
+          "is_start": true,
+          "is_final": false
+        },
+        {
+          "id": "forest_path",
+          "type": "choice",
+          "title": "Mistwood Trail",
+          "description": "You lead Lyren beneath veil-wrapped branches, keeping to the shadows to avoid Tidebinder scouts.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "forest",
+            "difficulty": "normal",
+            "type": "escort",
+            "special_tags": ["stealth"]
+          }
+        },
+        {
+          "id": "river_crossing",
+          "type": "choice",
+          "title": "River Road",
+          "description": "Taking the open path offers speed, but Lyren clutches the sigil nervously as patrols ripple across the river's surface.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "river",
+            "difficulty": "hard",
+            "type": "escort",
+            "special_tags": ["exposure"]
+          }
+        },
+        {
+          "id": "ambush_event",
+          "type": "choice",
+          "title": "Tidebinder Ambush",
+          "description": "Sirens burst from the reeds, aiming to seize Lyren. You must decide how to shield the oracle.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "forest",
+            "difficulty": "hard",
+            "type": "combat",
+            "special_tags": ["escort", "ambush"]
+          }
+        },
+        {
+          "id": "protective_barrier",
+          "type": "action",
+          "title": "Hold the Line",
+          "description": "You form a defensive ring, calling on the sigil's new wards to deflect incoming attacks while Lyren channels protective light.",
+          "is_start": false,
+          "is_final": false
+        },
+        {
+          "id": "counter_ambush",
+          "type": "action",
+          "title": "Break the Ambush",
+          "description": "You split the attackers with decisive strikes, buying Lyren time to sprint toward the sanctuary's gate.",
+          "is_start": false,
+          "is_final": false
+        },
+        {
+          "id": "oracle_safe",
+          "type": "ending",
+          "title": "Lyren Secured",
+          "description": "Breathless but unharmed, Lyren reaches the Moonwell dais. Their gratitude steels you for the final battle to come.",
+          "is_start": false,
+          "is_final": true
+        }
+      ],
+      "connections": [
+        {
+          "from": "escort_start",
+          "to": "forest_path",
+          "type": "choice",
+          "choice_text": "Guide Lyren along the shadowed trail",
+          "order": 1
+        },
+        {
+          "from": "escort_start",
+          "to": "river_crossing",
+          "type": "choice",
+          "choice_text": "Rush along the river road",
+          "order": 2
+        },
+        {
+          "from": "forest_path",
+          "to": "ambush_event",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "river_crossing",
+          "to": "ambush_event",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "ambush_event",
+          "to": "protective_barrier",
+          "type": "choice",
+          "choice_text": "Hold formation around Lyren",
+          "order": 1
+        },
+        {
+          "from": "ambush_event",
+          "to": "counter_ambush",
+          "type": "choice",
+          "choice_text": "Break the ambush head-on",
+          "order": 2
+        },
+        {
+          "from": "protective_barrier",
+          "to": "oracle_safe",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "counter_ambush",
+          "to": "oracle_safe",
+          "type": "default",
+          "order": 1
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Echoes of the Moonwell: Tidebinder's Fall",
+      "description": "Armed with the sigil and Lyren's guidance, you confront the Tidebinder who corrupted the Moonwell.",
+      "nodes": [
+        {
+          "id": "hunt_start",
+          "type": "start",
+          "title": "Final Approach",
+          "description": "Moonlight gathers around you and Lyren. The Tidebinder's lair pulses with stolen energy—you must end this threat.",
+          "is_start": true,
+          "is_final": false
+        },
+        {
+          "id": "lair_scouting",
+          "type": "choice",
+          "title": "Scout the Overlook",
+          "description": "You survey the Tidebinder's platform from jagged cliffs, mapping patrol routes and weak points.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "cliffs",
+            "difficulty": "normal",
+            "type": "hunt",
+            "special_tags": ["scouting"]
+          }
+        },
+        {
+          "id": "ritual_site",
+          "type": "choice",
+          "title": "Moonwell Heart",
+          "description": "Within the sanctum the Moonwell churns violently. Lyren braces the sigil while you advance through crashing waves of magic.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "sanctum",
+            "difficulty": "hard",
+            "type": "hunt",
+            "special_tags": ["ritual"]
+          }
+        },
+        {
+          "id": "tidebinder_confrontation",
+          "type": "choice",
+          "title": "Confront the Tidebinder",
+          "description": "The Tidebinder towers above the Moonwell, wielding currents like blades. Lyren signals that the sigil is ready to channel.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "sanctum",
+            "difficulty": "boss",
+            "type": "hunt",
+            "special_tags": ["boss", "moonwell"]
+          }
+        },
+        {
+          "id": "sigil_unleashed",
+          "type": "action",
+          "title": "Sigil Unleashed",
+          "description": "You pour the ciphered wards through the sigil. Purifying light binds the Tidebinder, unraveling their stolen power.",
+          "is_start": false,
+          "is_final": false
+        },
+        {
+          "id": "final_duel",
+          "type": "action",
+          "title": "Duel of Tides",
+          "description": "Steel clashes with tidal force as you trade every ounce of strength with the Tidebinder.",
+          "is_start": false,
+          "is_final": false,
+          "encounter_tags": {
+            "biome": "sanctum",
+            "difficulty": "boss",
+            "type": "hunt",
+            "special_tags": ["melee"]
+          }
+        },
+        {
+          "id": "moonwell_restored",
+          "type": "ending",
+          "title": "Moonwell Restored",
+          "description": "The Tidebinder falls and the Moonwell settles into tranquil glow. Lyren crowns you Moonwell Guardian of the new age.",
+          "is_start": false,
+          "is_final": true
+        }
+      ],
+      "connections": [
+        {
+          "from": "hunt_start",
+          "to": "lair_scouting",
+          "type": "choice",
+          "choice_text": "Scout the cliffs before striking",
+          "order": 1
+        },
+        {
+          "from": "hunt_start",
+          "to": "ritual_site",
+          "type": "choice",
+          "choice_text": "Charge straight to the Moonwell",
+          "order": 2
+        },
+        {
+          "from": "lair_scouting",
+          "to": "tidebinder_confrontation",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "ritual_site",
+          "to": "tidebinder_confrontation",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "tidebinder_confrontation",
+          "to": "sigil_unleashed",
+          "type": "choice",
+          "choice_text": "Channel the sigil's power",
+          "order": 1
+        },
+        {
+          "from": "tidebinder_confrontation",
+          "to": "final_duel",
+          "type": "choice",
+          "choice_text": "Engage the Tidebinder directly",
+          "order": 2
+        },
+        {
+          "from": "sigil_unleashed",
+          "to": "moonwell_restored",
+          "type": "default",
+          "order": 1
+        },
+        {
+          "from": "final_duel",
+          "to": "moonwell_restored",
+          "type": "default",
+          "order": 1
+        }
+      ]
     }
   ]
 }

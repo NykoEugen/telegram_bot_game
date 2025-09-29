@@ -9,7 +9,9 @@ from app.database import (
     create_quest,
     create_graph_quest_node,
     create_graph_quest_connection,
-    get_quest_by_id
+    get_quest_by_id,
+    get_quest_by_title,
+    delete_graph_quest_structure
 )
 from app.core.quest_loader import QuestLoader
 
@@ -19,25 +21,34 @@ logger = logging.getLogger(__name__)
 async def create_quest_from_json(quest_id: int):
     """Create a quest from JSON configuration."""
     async with AsyncSessionLocal() as session:
-        # Check if quest already exists
-        existing_quest = await get_quest_by_id(session, quest_id)
-        if existing_quest:
-            logger.info(f"Quest {quest_id} already exists, skipping creation.")
-            return existing_quest
-        
         # Load quest data from JSON
         quest_data = QuestLoader.get_quest_by_id(quest_id)
         if not quest_data:
             raise ValueError(f"Quest with ID {quest_id} not found in JSON configuration")
-        
-        # Create the main quest
-        quest = await create_quest(
-            session=session,
-            title=quest_data['title'],
-            description=quest_data['description']
-        )
-        
-        logger.info(f"Created quest: {quest.title} (ID: {quest.id})")
+
+        # Check if quest already exists by ID or title
+        quest = await get_quest_by_id(session, quest_id)
+        if not quest:
+            quest = await get_quest_by_title(session, quest_data['title'])
+
+        if quest:
+            # Refresh existing quest details and clear previous graph structure
+            quest.description = quest_data['description']
+            quest.is_active = True
+            session.add(quest)
+            await session.commit()
+            await session.refresh(quest)
+
+            await delete_graph_quest_structure(session, quest.id)
+            logger.info(f"Quest '{quest.title}' refreshed from JSON configuration.")
+        else:
+            # Create the main quest when it doesn't exist yet
+            quest = await create_quest(
+                session=session,
+                title=quest_data['title'],
+                description=quest_data['description']
+            )
+            logger.info(f"Created quest: {quest.title} (ID: {quest.id})")
         
         # Create quest nodes
         nodes_data = quest_data.get('nodes', [])
@@ -87,12 +98,16 @@ async def create_quest_from_json(quest_id: int):
 
 async def create_dragon_quest():
     """Create the dragon quest from JSON configuration."""
-    return await create_quest_from_json(2)
+    return await create_quest_from_json(1)
 
 
 async def create_mystery_quest():
     """Create the mystery quest from JSON configuration."""
-    return await create_quest_from_json(3)
+    created_quests = []
+    for quest_id in (2, 3, 4, 5):
+        quest = await create_quest_from_json(quest_id)
+        created_quests.append(quest)
+    return created_quests[-1] if created_quests else None
 
 
 async def main():
