@@ -758,6 +758,12 @@ class Hero(Base):
     attribute_points: Mapped[int] = mapped_column(default=0)
     talent_points: Mapped[int] = mapped_column(default=0)
     talents: Mapped[str] = mapped_column(default='[]')
+
+    # Task tracking
+    daily_progress: Mapped[str] = mapped_column(default='{}')
+    weekly_progress: Mapped[str] = mapped_column(default='{}')
+    daily_reset_at: Mapped[Optional[str]] = mapped_column(nullable=True)
+    weekly_reset_at: Mapped[Optional[str]] = mapped_column(nullable=True)
     
     # Timestamps
     created_at: Mapped[str] = mapped_column(nullable=False)
@@ -1219,6 +1225,10 @@ async def create_hero(
         attribute_points=0,
         talent_points=0,
         talents='[]',
+        daily_progress='{}',
+        weekly_progress='{}',
+        daily_reset_at=datetime.utcnow().isoformat(),
+        weekly_reset_at=datetime.utcnow().isoformat(),
         created_at=datetime.utcnow().isoformat(),
         last_activity_at=datetime.utcnow().isoformat()
     )

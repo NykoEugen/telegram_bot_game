@@ -33,28 +33,12 @@ from app.database import (
 from app.core.hero_system import HeroCalculator
 from app.core.encounter_system import EncounterResult, EncounterType, Biome, Difficulty
 from app.keyboards import GraphQuestKeyboardBuilder, get_main_menu_keyboard
-from models.character_ach import AchievementTracker
+from app.services.progression import record_progress_messages
 
 logger = logging.getLogger(__name__)
 
 # Create router for graph quest handlers
 graph_quest_router = Router()
-
-
-async def _record_and_notify_achievement(message_obj, user_id: int, metric: str) -> None:
-    """Increment an achievement metric and notify the player about unlocks."""
-    unlocked = []
-    async for session in get_db_session():
-        hero = await get_hero_for_telegram(session, user_id)
-        if not hero:
-            break
-        unlocked = await AchievementTracker.record_metric(session, hero, metric, 1)
-        break
-
-    if unlocked:
-        message = AchievementTracker.format_unlock_message(unlocked)
-        if message:
-            await message_obj.answer(message)
 
 
 class GraphQuestManager:
@@ -825,8 +809,18 @@ async def handle_graph_quest_choice(callback: CallbackQuery):
         # Quest completed - show rewards screen
         # Import here to avoid circular imports
         from app.handlers.town import show_quest_rewards
-        await _record_and_notify_achievement(callback.message, user_id, 'graph_quests_completed')
-        await _record_and_notify_achievement(callback.message, user_id, 'quests_completed')
+        hero_id = None
+        async for session in get_db_session():
+            hero = await get_hero_for_telegram(session, user_id)
+            if hero:
+                hero_id = hero.id
+            break
+
+        if hero_id:
+            for message_text in await record_progress_messages(hero_id, 'graph_quests_completed', 1):
+                await callback.message.answer(message_text)
+            for message_text in await record_progress_messages(hero_id, 'quests_completed', 1):
+                await callback.message.answer(message_text)
         await show_quest_rewards(callback, quest.title, current_node.description)
         return
     elif encounter:

@@ -34,7 +34,7 @@ from app.core.item_system import ItemEngine, InventoryItemDefinition, ItemEffect
 from app.handlers.graph_quest import GraphQuestManager
 from app.handlers.inventory import build_overworld_inventory_view
 from app.keyboards import get_combat_keyboard, get_main_menu_keyboard
-from models.character_ach import AchievementTracker
+from app.services.progression import record_progress_messages
 
 logger = logging.getLogger(__name__)
 
@@ -60,27 +60,6 @@ async def _replace_message(
         await callback.message.edit_text(text, reply_markup=keyboard)
     except TelegramBadRequest:
         await callback.message.answer(text, reply_markup=keyboard)
-
-
-async def _record_and_notify_achievements(
-    callback: CallbackQuery,
-    hero_id: int,
-    metric: str,
-    amount: int = 1,
-) -> None:
-    """Increment an achievement metric and notify the player if something unlocked."""
-    unlocked = []
-    async for session in get_db_session():
-        hero = await get_hero_by_id(session, hero_id)
-        if not hero:
-            break
-        unlocked = await AchievementTracker.record_metric(session, hero, metric, amount)
-        break
-
-    if unlocked:
-        message = AchievementTracker.format_unlock_message(unlocked)
-        if message:
-            await callback.message.answer(message)
 
 
 class CombatStates(StatesGroup):
@@ -242,7 +221,8 @@ async def handle_combat_action(callback: CallbackQuery, state: FSMContext):
     combat_state.combat_log.append(hero_result.message)
 
     if hero_result.is_critical:
-        await _record_and_notify_achievements(callback, combat_state.hero_id, 'critical_hits', 1)
+        for message_text in await record_progress_messages(combat_state.hero_id, 'critical_hits', 1):
+            await callback.message.answer(message_text)
 
     # Apply flee penalties when escape fails during quests
     if (
@@ -444,9 +424,11 @@ async def handle_combat_victory(callback: CallbackQuery, state: FSMContext, comb
             await update_hero(session, hero)
         break
 
-    await _record_and_notify_achievements(callback, combat_state.hero_id, 'combat_victories', 1)
+    for message_text in await record_progress_messages(combat_state.hero_id, 'combat_victories', 1):
+        await callback.message.answer(message_text)
     if getattr(combat_state.monster_stats, 'difficulty', None) == 'boss':
-        await _record_and_notify_achievements(callback, combat_state.hero_id, 'boss_victories', 1)
+        for message_text in await record_progress_messages(combat_state.hero_id, 'boss_victories', 1):
+            await callback.message.answer(message_text)
 
     if quest_mode and quest_id is not None and node_id is not None:
         summary = (
