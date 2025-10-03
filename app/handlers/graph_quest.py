@@ -12,6 +12,7 @@ from aiogram.utils.markdown import hbold, hitalic
 
 from app.database import (
     AsyncSessionLocal,
+    get_db_session,
     get_user_by_telegram_id,
     get_graph_quest_by_id,
     get_graph_quest_node_by_id,
@@ -24,6 +25,7 @@ from app.database import (
     get_active_quests,
     get_hero_by_user_id,
     get_hero_class_by_id,
+    get_hero_for_telegram,
     GraphQuestNode,
     GraphQuestConnection,
     GraphQuestProgress
@@ -31,11 +33,28 @@ from app.database import (
 from app.core.hero_system import HeroCalculator
 from app.core.encounter_system import EncounterResult, EncounterType, Biome, Difficulty
 from app.keyboards import GraphQuestKeyboardBuilder, get_main_menu_keyboard
+from models.character_ach import AchievementTracker
 
 logger = logging.getLogger(__name__)
 
 # Create router for graph quest handlers
 graph_quest_router = Router()
+
+
+async def _record_and_notify_achievement(message_obj, user_id: int, metric: str) -> None:
+    """Increment an achievement metric and notify the player about unlocks."""
+    unlocked = []
+    async for session in get_db_session():
+        hero = await get_hero_for_telegram(session, user_id)
+        if not hero:
+            break
+        unlocked = await AchievementTracker.record_metric(session, hero, metric, 1)
+        break
+
+    if unlocked:
+        message = AchievementTracker.format_unlock_message(unlocked)
+        if message:
+            await message_obj.answer(message)
 
 
 class GraphQuestManager:
@@ -806,6 +825,8 @@ async def handle_graph_quest_choice(callback: CallbackQuery):
         # Quest completed - show rewards screen
         # Import here to avoid circular imports
         from app.handlers.town import show_quest_rewards
+        await _record_and_notify_achievement(callback.message, user_id, 'graph_quests_completed')
+        await _record_and_notify_achievement(callback.message, user_id, 'quests_completed')
         await show_quest_rewards(callback, quest.title, current_node.description)
         return
     elif encounter:
