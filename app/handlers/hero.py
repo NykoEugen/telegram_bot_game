@@ -15,9 +15,11 @@ from app.database import (
     get_db_session, create_user, get_user_by_telegram_id,
     create_hero, get_hero_by_user_id, get_hero_class_by_id, get_all_hero_classes,
     create_hero_class, get_hero_class_by_name, Hero, HeroClass,
-    add_item_to_hero, get_item_by_code
+    add_item_to_hero, get_item_by_code, allocate_hero_attribute_point,
+    unlock_hero_talent
 )
 from app.core.hero_system import HeroCalculator, HeroClasses
+from models.character import get_unlockable_talents
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,94 @@ class HeroCreationStates(StatesGroup):
     choosing_class = State()
     entering_name = State()
     confirming_creation = State()
+
+
+DEFAULT_CLOSE_CALLBACK = "close_hero_info"
+ATTRIBUTE_BUTTON_LABELS = {
+    'str': "➕ STR",
+    'agi': "➕ AGI",
+    'int': "➕ INT",
+}
+
+
+def _split_callback_payload(data: str) -> tuple[str, Optional[str]]:
+    """Split callback data into action and payload if present."""
+    if "|" in data:
+        return tuple(data.split("|", 1))  # type: ignore[return-value]
+    return data, None
+
+
+def _resolve_close_payload(payload: Optional[str]) -> str:
+    """Return a valid close callback for hero menus."""
+    return payload if payload else DEFAULT_CLOSE_CALLBACK
+
+
+def _close_label_for_callback(close_callback: str) -> str:
+    """Return an appropriate close button label for the context."""
+    if close_callback.startswith("close_hero_to_inn"):
+        return "🚪 Повернутися в таверну"
+    return "🚪 Закрити"
+
+
+def build_hero_info_keyboard(
+    hero_stats,
+    close_callback: str = DEFAULT_CLOSE_CALLBACK,
+    close_label: str = "🚪 Закрити",
+) -> InlineKeyboardMarkup:
+    """Create inline keyboard for hero overview with upgrade actions."""
+    rows: list[list[InlineKeyboardButton]] = []
+
+    attribute_row: list[InlineKeyboardButton] = []
+    for attr_key, label in ATTRIBUTE_BUTTON_LABELS.items():
+        attribute_row.append(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"hero_attr_inc_{attr_key}|{close_callback}"
+            )
+        )
+    rows.append(attribute_row)
+
+    rows.append([
+        InlineKeyboardButton(
+            text="🌟 Керування талантами",
+            callback_data=f"hero_talents_menu|{close_callback}"
+        )
+    ])
+
+    rows.append([
+        InlineKeyboardButton(text=close_label, callback_data=close_callback)
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_talent_menu_keyboard(
+    hero_stats,
+    close_callback: str = DEFAULT_CLOSE_CALLBACK,
+    close_label: str = "🚪 Закрити",
+) -> InlineKeyboardMarkup:
+    """Create inline keyboard for the talents menu."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for definition in get_unlockable_talents(hero_stats.level, hero_stats.talents):
+        rows.append([
+            InlineKeyboardButton(
+                text=f"🌟 {definition.name}",
+                callback_data=f"hero_talent_unlock:{definition.id}|{close_callback}"
+            )
+        ])
+
+    rows.append([
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=f"hero_stats_back|{close_callback}"
+        )
+    ])
+
+    rows.append([
+        InlineKeyboardButton(text=close_label, callback_data=close_callback)
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @hero_router.message(Command("hero"))
@@ -49,12 +139,8 @@ async def hero_command(message: Message, state: FSMContext):
             if hero_class:
                 hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
                 stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
-                
-                # Create keyboard with exit button
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🚪 Закрити", callback_data="close_hero_info")]
-                ])
-                
+                keyboard = build_hero_info_keyboard(hero_stats)
+
                 await message.answer(stats_text, reply_markup=keyboard)
             else:
                 await message.answer("❌ Помилка: клас героя не знайдений.")
@@ -524,12 +610,13 @@ async def hero_menu_from_inn_handler(callback: CallbackQuery):
             if hero_class:
                 hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
                 stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
-                
-                # Create keyboard with close button that returns to inn
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🚪 Повернутися в таверну", callback_data=f"close_hero_to_inn:{town_id}:{node_id}")]
-                ])
-                
+                close_callback = f"close_hero_to_inn:{town_id}:{node_id}"
+                keyboard = build_hero_info_keyboard(
+                    hero_stats,
+                    close_callback=close_callback,
+                    close_label=_close_label_for_callback(close_callback)
+                )
+
                 await callback.message.edit_text(stats_text, reply_markup=keyboard)
             else:
                 await callback.message.answer("❌ Помилка: клас героя не знайдений.")
@@ -567,12 +654,8 @@ async def hero_menu_handler(callback: CallbackQuery):
             if hero_class:
                 hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
                 stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
-                
-                # Create keyboard with close button
-                keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🚪 Закрити", callback_data="close_hero_info")]
-                ])
-                
+                keyboard = build_hero_info_keyboard(hero_stats)
+
                 await callback.message.edit_text(stats_text, reply_markup=keyboard)
             else:
                 await callback.message.answer("❌ Помилка: клас героя не знайдений.")
@@ -589,6 +672,164 @@ async def hero_menu_handler(callback: CallbackQuery):
                     [InlineKeyboardButton(text="🚪 Закрити", callback_data="close_hero_info")]
                 ])
             )
+
+
+@hero_router.callback_query(F.data.startswith("hero_attr_inc_"))
+async def hero_attribute_upgrade_handler(callback: CallbackQuery):
+    """Handle attribute upgrade button presses."""
+    action, payload = _split_callback_payload(callback.data)
+    close_callback = _resolve_close_payload(payload)
+    attribute = action.split("_")[-1]
+
+    async for session in get_db_session():
+        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Користувач не знайдений.", show_alert=True)
+            return
+
+        hero = await get_hero_by_user_id(session, user.id)
+        if not hero:
+            await callback.answer("❌ Спершу створіть героя.", show_alert=True)
+            return
+
+        try:
+            hero = await allocate_hero_attribute_point(session, hero, attribute)
+        except ValueError as error:
+            await callback.answer(str(error), show_alert=True)
+            return
+
+        hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+        if not hero_class:
+            await callback.answer("❌ Помилка: клас героя не знайдений.", show_alert=True)
+            return
+
+        hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
+        stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
+        close_label = _close_label_for_callback(close_callback)
+        keyboard = build_hero_info_keyboard(
+            hero_stats,
+            close_callback=close_callback,
+            close_label=close_label
+        )
+
+        await callback.message.edit_text(stats_text, reply_markup=keyboard)
+        await callback.answer("✅ Характеристика підвищена!")
+        return
+
+
+@hero_router.callback_query(F.data.startswith("hero_talents_menu"))
+async def hero_talents_menu_handler(callback: CallbackQuery):
+    """Open the talents management menu."""
+    _, payload = _split_callback_payload(callback.data)
+    close_callback = _resolve_close_payload(payload)
+
+    async for session in get_db_session():
+        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Користувач не знайдений.", show_alert=True)
+            return
+
+        hero = await get_hero_by_user_id(session, user.id)
+        if not hero:
+            await callback.answer("❌ Спершу створіть героя.", show_alert=True)
+            return
+
+        hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+        if not hero_class:
+            await callback.answer("❌ Помилка: клас героя не знайдений.", show_alert=True)
+            return
+
+        hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
+        talents_text = HeroCalculator.format_talents_menu(hero_stats)
+        close_label = _close_label_for_callback(close_callback)
+        keyboard = build_talent_menu_keyboard(
+            hero_stats,
+            close_callback=close_callback,
+            close_label=close_label
+        )
+
+        await callback.message.edit_text(talents_text, reply_markup=keyboard)
+        await callback.answer()
+        return
+
+
+@hero_router.callback_query(F.data.startswith("hero_stats_back"))
+async def hero_stats_back_handler(callback: CallbackQuery):
+    """Return from the talents menu to the hero overview."""
+    _, payload = _split_callback_payload(callback.data)
+    close_callback = _resolve_close_payload(payload)
+
+    async for session in get_db_session():
+        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Користувач не знайдений.", show_alert=True)
+            return
+
+        hero = await get_hero_by_user_id(session, user.id)
+        if not hero:
+            await callback.answer("❌ Спершу створіть героя.", show_alert=True)
+            return
+
+        hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+        if not hero_class:
+            await callback.answer("❌ Помилка: клас героя не знайдений.", show_alert=True)
+            return
+
+        hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
+        stats_text = HeroCalculator.format_stats_display(hero_stats, hero_class)
+        close_label = _close_label_for_callback(close_callback)
+        keyboard = build_hero_info_keyboard(
+            hero_stats,
+            close_callback=close_callback,
+            close_label=close_label
+        )
+
+        await callback.message.edit_text(stats_text, reply_markup=keyboard)
+        await callback.answer()
+        return
+
+
+@hero_router.callback_query(F.data.startswith("hero_talent_unlock:"))
+async def hero_talent_unlock_handler(callback: CallbackQuery):
+    """Unlock a talent if the hero meets the requirements."""
+    action, payload = _split_callback_payload(callback.data)
+    close_callback = _resolve_close_payload(payload)
+    talent_id = action.split(":", 1)[1]
+
+    async for session in get_db_session():
+        user = await get_user_by_telegram_id(session, callback.from_user.id)
+        if not user:
+            await callback.answer("❌ Користувач не знайдений.", show_alert=True)
+            return
+
+        hero = await get_hero_by_user_id(session, user.id)
+        if not hero:
+            await callback.answer("❌ Спершу створіть героя.", show_alert=True)
+            return
+
+        try:
+            hero = await unlock_hero_talent(session, hero, talent_id)
+        except ValueError as error:
+            await callback.answer(str(error), show_alert=True)
+            return
+
+        hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+        if not hero_class:
+            await callback.answer("❌ Помилка: клас героя не знайдений.", show_alert=True)
+            return
+
+        hero_stats = HeroCalculator.create_hero_stats(hero, hero_class)
+        talents_text = HeroCalculator.format_talents_menu(hero_stats)
+        close_label = _close_label_for_callback(close_callback)
+        keyboard = build_talent_menu_keyboard(
+            hero_stats,
+            close_callback=close_callback,
+            close_label=close_label
+        )
+
+        await callback.message.edit_text(talents_text, reply_markup=keyboard)
+        await callback.answer("✅ Талант вивчено!")
+        return
 
 
 @hero_router.callback_query(F.data.startswith("close_hero_to_inn:"))
