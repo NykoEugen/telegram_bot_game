@@ -7,6 +7,7 @@ from .graph_quest import register_graph_quest_handlers
 from .hero import register_hero_handlers
 from .quest import register_quest_handlers
 from .profile import profile_router
+from .dailies import dailies_router
 from .town import register_town_handlers
 from .encounter import register_encounter_handlers
 from .inventory import router as inventory_router
@@ -20,6 +21,7 @@ def register_handlers(dp: Dispatcher) -> None:
     register_encounter_handlers(dp)
     dp.include_router(inventory_router)
     dp.include_router(profile_router)
+    dp.include_router(dailies_router)
     register_quest_handlers(dp)
     register_graph_quest_handlers(dp)
     register_town_handlers(dp)

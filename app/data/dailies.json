@@ -1,0 +1,78 @@
+{
+  "daily": [
+    {
+      "id": "daily_combat_wins",
+      "name": "Бойова розминка",
+      "description": "Переможи 3 ворогів у будь-яких боях.",
+      "icon": "⚔️",
+      "metric": "combat_victories",
+      "target": 3,
+      "reward": {
+        "xp": 50,
+        "gold": 25
+      }
+    },
+    {
+      "id": "daily_critical_hits",
+      "name": "Тренування точності",
+      "description": "Нанеси 5 критичних ударів.",
+      "icon": "🎯",
+      "metric": "critical_hits",
+      "target": 5,
+      "reward": {
+        "xp": 40,
+        "gold": 15
+      }
+    },
+    {
+      "id": "daily_quest_step",
+      "name": "Малі пригоди",
+      "description": "Просунься у будь-якому квесті або заверши один.",
+      "icon": "📜",
+      "metric": "quests_completed",
+      "target": 1,
+      "reward": {
+        "xp": 60,
+        "gold": 30
+      }
+    }
+  ],
+  "weekly": [
+    {
+      "id": "weekly_boss",
+      "name": "Полювання на босів",
+      "description": "Переможи 3 босів за тиждень.",
+      "icon": "👑",
+      "metric": "boss_victories",
+      "target": 3,
+      "reward": {
+        "xp": 200,
+        "gold": 150
+      }
+    },
+    {
+      "id": "weekly_graph_quests",
+      "name": "Майстер маршрутів",
+      "description": "Заверши 2 граф-квести цього тижня.",
+      "icon": "🌌",
+      "metric": "graph_quests_completed",
+      "target": 2,
+      "reward": {
+        "xp": 180,
+        "gold": 120
+      }
+    },
+    {
+      "id": "weekly_crit_master",
+      "name": "Шторм критів",
+      "description": "Здійсни 30 критичних ударів.",
+      "icon": "⚡",
+      "metric": "critical_hits",
+      "target": 30,
+      "reward": {
+        "xp": 150,
+        "gold": 100
+      }
+    }
+  ]
+}
