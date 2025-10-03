@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import AsyncGenerator, Optional
 
@@ -8,6 +9,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import text
 
 from .config import Config
+from models.character import (
+    ATTRIBUTE_KEYS,
+    attribute_points_for_level,
+    get_talent_definition,
+    talent_points_for_level,
+    xp_to_next_level,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -742,9 +750,14 @@ class Hero(Base):
     base_int: Mapped[int] = mapped_column(default=5)
     base_vit: Mapped[int] = mapped_column(default=5)
     base_luk: Mapped[int] = mapped_column(default=5)
-    
+
     # Current HP (calculated from max HP)
     current_hp: Mapped[int] = mapped_column(default=20)
+
+    # Progression resources
+    attribute_points: Mapped[int] = mapped_column(default=0)
+    talent_points: Mapped[int] = mapped_column(default=0)
+    talents: Mapped[str] = mapped_column(default='[]')
     
     # Timestamps
     created_at: Mapped[str] = mapped_column(nullable=False)
@@ -1167,6 +1180,9 @@ async def create_hero(
         base_vit=base_vit,
         base_luk=base_luk,
         current_hp=starting_hp,
+        attribute_points=0,
+        talent_points=0,
+        talents='[]',
         created_at=datetime.utcnow().isoformat(),
         last_activity_at=datetime.utcnow().isoformat()
     )
@@ -1220,37 +1236,88 @@ async def update_hero(session: AsyncSession, hero: Hero) -> Hero:
 
 async def add_hero_experience(session: AsyncSession, hero: Hero, experience: int) -> Hero:
     """Add experience to hero and handle level ups."""
-    import json
-
     hero.experience += experience
+    
+    leveled_up = False
     
     # Check for level ups
     while True:
-        xp_needed = 50 + 25 * hero.level
-        if hero.experience >= xp_needed:
-            # Level up
-            hero.experience -= xp_needed
-            hero.level += 1
-            
-            # Get hero class for stat growth
-            hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
-            if hero_class:
-                stat_growth = json.loads(hero_class.stat_growth)
-                
-                # Apply stat growth
-                hero.base_str += stat_growth.get('str', 0)
-                hero.base_agi += stat_growth.get('agi', 0)
-                hero.base_int += stat_growth.get('int', 0)
-                hero.base_vit += stat_growth.get('vit', 0)
-                hero.base_luk += stat_growth.get('luk', 0)
-                
-                # Recalculate max HP and heal to full
-                total_vit = hero.base_vit + hero_class.vit_bonus
-                max_hp = 20 + 4 * total_vit
-                hero.current_hp = max_hp
-        else:
+        xp_needed = xp_to_next_level(hero.level)
+        if hero.experience < xp_needed:
             break
-    
+
+        hero.experience -= xp_needed
+        hero.level += 1
+        leveled_up = True
+
+        hero.attribute_points += attribute_points_for_level(hero.level)
+        hero.talent_points += talent_points_for_level(hero.level)
+
+        # Get hero class for stat growth
+        hero_class = await get_hero_class_by_id(session, hero.hero_class_id)
+        if hero_class:
+            stat_growth = json.loads(hero_class.stat_growth)
+
+            # Apply stat growth
+            hero.base_str += stat_growth.get('str', 0)
+            hero.base_agi += stat_growth.get('agi', 0)
+            hero.base_int += stat_growth.get('int', 0)
+            hero.base_vit += stat_growth.get('vit', 0)
+            hero.base_luk += stat_growth.get('luk', 0)
+
+            # Recalculate max HP and heal to full when vitality grows
+            total_vit = hero.base_vit + hero_class.vit_bonus
+            max_hp = 20 + 4 * total_vit
+            hero.current_hp = max_hp
+
+    if leveled_up:
+        hero.attribute_points = max(0, hero.attribute_points)
+        hero.talent_points = max(0, hero.talent_points)
+
+    return await update_hero(session, hero)
+
+
+async def allocate_hero_attribute_point(session: AsyncSession, hero: Hero, attribute: str) -> Hero:
+    """Spend one attribute point to increase a primary stat."""
+    normalized = attribute.lower()
+    if normalized not in ATTRIBUTE_KEYS:
+        raise ValueError("Невідома характеристика")
+
+    if hero.attribute_points <= 0:
+        raise ValueError("Немає вільних очок характеристик")
+
+    field_name = f"base_{normalized}"
+    current_value = getattr(hero, field_name)
+    setattr(hero, field_name, current_value + 1)
+    hero.attribute_points -= 1
+
+    return await update_hero(session, hero)
+
+
+async def unlock_hero_talent(session: AsyncSession, hero: Hero, talent_id: str) -> Hero:
+    """Unlock a talent for the hero if requirements are met."""
+    if hero.talent_points <= 0:
+        raise ValueError("Немає вільних очок талантів")
+
+    definition = get_talent_definition(talent_id)
+    if not definition:
+        raise ValueError("Талант не знайдений")
+
+    if hero.level < definition.required_level:
+        raise ValueError("Рівень героя недостатній для цього таланту")
+
+    try:
+        current_talents = json.loads(hero.talents or '[]')
+    except json.JSONDecodeError:
+        current_talents = []
+
+    if talent_id in current_talents:
+        raise ValueError("Талант вже вивчений")
+
+    current_talents.append(talent_id)
+    hero.talents = json.dumps(current_talents)
+    hero.talent_points -= 1
+
     return await update_hero(session, hero)
 
 

@@ -1,13 +1,19 @@
-"""
-Hero system logic for calculating stats and derived attributes.
-"""
+"""Hero system logic for calculating stats and derived attributes."""
 
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.database import Hero, HeroClass
+from models.character import (
+    apply_talent_modifiers,
+    calculate_magical_power,
+    calculate_physical_power,
+    get_talent_definition,
+    get_unlockable_talents,
+    xp_to_next_level,
+)
 
 
 @dataclass
@@ -20,6 +26,7 @@ class HeroStats:
     int: int
     vit: int
     luk: int
+    attrs: Dict[str, int]
     
     # Derived stats
     hp_max: int
@@ -33,6 +40,9 @@ class HeroStats:
     level: int
     experience: int
     xp_to_next: int
+    attribute_points: int
+    talent_points: int
+    talents: List[str]
 
 
 class HeroCalculator:
@@ -50,44 +60,47 @@ class HeroCalculator:
         }
     
     @staticmethod
-    def calculate_derived_stats(hero: Hero, hero_class: HeroClass) -> Dict[str, Any]:
-        """Calculate derived stats based on formulas."""
+    def calculate_derived_stats(hero: Hero, hero_class: HeroClass, talents: list[str]) -> Dict[str, Any]:
+        """Calculate derived stats based on formulas and unlocked talents."""
         total_stats = HeroCalculator.calculate_total_stats(hero, hero_class)
-        
-        # HP_MAX = 20 + 4*VIT
-        hp_max = 20 + 4 * total_stats['vit']
-        
-        # ATK = 2 + STR
-        atk = 2 + total_stats['str']
-        
-        # MAG = 2 + INT
-        mag = 2 + total_stats['int']
-        
-        # CRIT_CHANCE = 5% + 0.5*AGI (cap 35%)
-        crit_chance = min(35.0, 5.0 + 0.5 * total_stats['agi'])
-        
-        # DODGE = 2% + 0.4*AGI (cap 25%)
-        dodge = min(25.0, 2.0 + 0.4 * total_stats['agi'])
-        
+        base_stats = {
+            'hp_max': 22.0 + 5.0 * total_stats['vit'],
+            'atk': calculate_physical_power(total_stats['str'], total_stats['agi']),
+            'mag': calculate_magical_power(total_stats['int'], total_stats['agi']),
+            'crit_chance': min(45.0, 5.0 + 0.45 * total_stats['agi'] + 0.15 * total_stats['luk']),
+            'dodge': min(35.0, 3.0 + 0.35 * total_stats['agi'] + 0.1 * total_stats['luk']),
+        }
+
+        modified_stats = apply_talent_modifiers(base_stats, talents)
+
+        crit_chance = min(55.0, max(0.0, modified_stats.get('crit_chance', base_stats['crit_chance'])))
+        dodge = min(45.0, max(0.0, modified_stats.get('dodge', base_stats['dodge'])))
+
         return {
-            'hp_max': hp_max,
-            'atk': atk,
-            'mag': mag,
+            'hp_max': int(modified_stats.get('hp_max', base_stats['hp_max'])),
+            'atk': int(modified_stats.get('atk', base_stats['atk'])),
+            'mag': int(modified_stats.get('mag', base_stats['mag'])),
             'crit_chance': crit_chance,
             'dodge': dodge
         }
     
     @staticmethod
     def calculate_xp_to_next_level(level: int) -> int:
-        """Calculate XP needed for next level: XP_to_next = 50 + 25 * level"""
-        return 50 + 25 * level
+        """Calculate XP needed for next level using the shared curve."""
+        return xp_to_next_level(level)
     
     @staticmethod
     def create_hero_stats(hero: Hero, hero_class: HeroClass) -> HeroStats:
         """Create a complete HeroStats object with all calculated values."""
         total_stats = HeroCalculator.calculate_total_stats(hero, hero_class)
-        derived_stats = HeroCalculator.calculate_derived_stats(hero, hero_class)
+        try:
+            talents = json.loads(hero.talents or '[]')
+        except json.JSONDecodeError:
+            talents = []
+
+        derived_stats = HeroCalculator.calculate_derived_stats(hero, hero_class, talents)
         xp_to_next = HeroCalculator.calculate_xp_to_next_level(hero.level)
+        hp_current = min(hero.current_hp, derived_stats['hp_max'])
         
         return HeroStats(
             str=total_stats['str'],
@@ -95,25 +108,43 @@ class HeroCalculator:
             int=total_stats['int'],
             vit=total_stats['vit'],
             luk=total_stats['luk'],
+            attrs={'str': total_stats['str'], 'agi': total_stats['agi'], 'int': total_stats['int']},
             hp_max=derived_stats['hp_max'],
-            hp_current=hero.current_hp,
+            hp_current=hp_current,
             atk=derived_stats['atk'],
             mag=derived_stats['mag'],
             crit_chance=derived_stats['crit_chance'],
             dodge=derived_stats['dodge'],
             level=hero.level,
             experience=hero.experience,
-            xp_to_next=xp_to_next
+            xp_to_next=xp_to_next,
+            attribute_points=hero.attribute_points,
+            talent_points=hero.talent_points,
+            talents=talents
         )
-    
+
     @staticmethod
     def format_stats_display(hero_stats: HeroStats, hero_class: HeroClass) -> str:
         """Format hero stats for display in Telegram."""
+        talent_lines: List[str] = []
+        if hero_stats.talents:
+            for talent_id in hero_stats.talents:
+                definition = get_talent_definition(talent_id)
+                if definition:
+                    talent_lines.append(f"• {definition.name}")
+                else:
+                    talent_lines.append(f"• {talent_id}")
+        else:
+            talent_lines.append("• Ще не вивчено таланти")
+
         stats_text = f"""
 🏆 <b>{hero_stats.name if hasattr(hero_stats, 'name') else 'Герой'}</b>
 ⚔️ Клас: {hero_class.name}
 📊 Рівень: {hero_stats.level}
 ⭐ Досвід: {hero_stats.experience}/{hero_stats.xp_to_next}
+
+✨ Вільні очки характеристик: {hero_stats.attribute_points}
+🌟 Очки талантів: {hero_stats.talent_points}
 
 💪 <b>Основні характеристики:</b>
 ⚡ Сила (STR): {hero_stats.str}
@@ -128,8 +159,41 @@ class HeroCalculator:
 🔮 Магія: {hero_stats.mag}
 💥 Крит: {hero_stats.crit_chance:.1f}%
 🛡️ Ухилення: {hero_stats.dodge:.1f}%
+
+🎓 <b>Таланти:</b>
+{chr(10).join(talent_lines)}
 """
         return stats_text.strip()
+
+    @staticmethod
+    def format_talents_menu(hero_stats: HeroStats) -> str:
+        """Format the list of unlocked and available talents."""
+        unlocked_lines = []
+        for talent_id in hero_stats.talents:
+            definition = get_talent_definition(talent_id)
+            if definition:
+                unlocked_lines.append(f"• {definition.name} — <i>{definition.description}</i>")
+            else:
+                unlocked_lines.append(f"• {talent_id}")
+
+        if not unlocked_lines:
+            unlocked_lines.append("• Ще не вивчено таланти")
+
+        available_lines = []
+        for definition in get_unlockable_talents(hero_stats.level, hero_stats.talents):
+            available_lines.append(
+                f"• {definition.name} (рівень {definition.required_level}) — <i>{definition.description}</i>"
+            )
+
+        if not available_lines:
+            available_lines.append("• Немає доступних талантів на цьому рівні")
+
+        return (
+            "🌟 <b>Таланти героя</b>\n\n"
+            f"🔒 <b>Відкриті:</b>\n{chr(10).join(unlocked_lines)}\n\n"
+            f"🔓 <b>Доступні:</b>\n{chr(10).join(available_lines)}\n\n"
+            f"Очки талантів: {hero_stats.talent_points}"
+        )
     
     @staticmethod
     def format_class_info(hero_class: HeroClass) -> str:
