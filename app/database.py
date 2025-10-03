@@ -767,6 +767,42 @@ class Hero(Base):
         return f"<Hero(id={self.id}, user_id={self.user_id}, name={self.name}, level={self.level})>"
 
 
+class Achievement(Base):
+    """Static achievement definitions stored in the database."""
+    __tablename__ = "achievements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str] = mapped_column(nullable=False)
+    icon: Mapped[str] = mapped_column(nullable=False, default='🏅')
+    metric: Mapped[str] = mapped_column(nullable=False, index=True)
+    target_value: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    updated_at: Mapped[str] = mapped_column(nullable=False)
+
+    def __repr__(self):
+        return f"<Achievement(code={self.code}, target={self.target_value})>"
+
+
+class HeroAchievement(Base):
+    """Link table storing hero progress towards achievements."""
+    __tablename__ = "hero_achievements"
+    __table_args__ = (
+        UniqueConstraint('hero_id', 'achievement_id', name='uq_hero_achievement'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    hero_id: Mapped[int] = mapped_column(ForeignKey("heroes.id"), index=True)
+    achievement_id: Mapped[int] = mapped_column(ForeignKey("achievements.id"), index=True)
+    progress: Mapped[int] = mapped_column(default=0)
+    unlocked_at: Mapped[Optional[str]] = mapped_column(nullable=True)
+    progress_updated_at: Mapped[str] = mapped_column(nullable=False)
+
+    def __repr__(self):
+        return f"<HeroAchievement(hero_id={self.hero_id}, achievement_id={self.achievement_id}, progress={self.progress})>"
+
+
 class Item(Base):
     """Item definition that can be stored in hero inventories."""
     __tablename__ = "items"
