@@ -6,6 +6,7 @@ from .combat import router as combat_router
 from .graph_quest import register_graph_quest_handlers
 from .hero import register_hero_handlers
 from .quest import register_quest_handlers
+from .bounty import bounty_router
 from .profile import profile_router
 from .dailies import dailies_router
 from .town import register_town_handlers
@@ -22,6 +23,7 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.include_router(inventory_router)
     dp.include_router(profile_router)
     dp.include_router(dailies_router)
+    dp.include_router(bounty_router)
     register_quest_handlers(dp)
     register_graph_quest_handlers(dp)
     register_town_handlers(dp)

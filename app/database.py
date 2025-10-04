@@ -71,6 +71,63 @@ class QuestRequirement(Base):
         return f"<QuestRequirement(quest_id={self.quest_id})>"
 
 
+class BountyTemplate(Base):
+    """Static template definition for procedurally generated bounties."""
+
+    __tablename__ = "bounty_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(unique=True, index=True)
+    title: Mapped[str] = mapped_column(nullable=False)
+    description: Mapped[str] = mapped_column(nullable=False)
+    category: Mapped[str] = mapped_column(nullable=False)  # e.g. hunt, rescue, escort
+    duration_minutes: Mapped[int] = mapped_column(default=6)
+    data: Mapped[str] = mapped_column(nullable=False)  # JSON payload describing template details
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    updated_at: Mapped[str] = mapped_column(nullable=False)
+
+    def __repr__(self):
+        return f"<BountyTemplate(code={self.code}, category={self.category})>"
+
+
+class ActiveBounty(Base):
+    """Generated bounty instance available to players for a limited time."""
+
+    __tablename__ = "active_bounties"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("bounty_templates.id"), nullable=False, index=True)
+    seed: Mapped[str] = mapped_column(nullable=False)  # used to reconstruct procedural output
+    payload: Mapped[str] = mapped_column(nullable=False)  # cached generated content JSON
+    available_from: Mapped[str] = mapped_column(nullable=False)
+    expires_at: Mapped[str] = mapped_column(nullable=False)
+    tier: Mapped[str] = mapped_column(nullable=False, default="standard")
+
+    def __repr__(self):
+        return f"<ActiveBounty(id={self.id}, template_id={self.template_id}, tier={self.tier})>"
+
+
+class HeroBountyProgress(Base):
+    """Tracks a hero's interaction with generated bounties."""
+
+    __tablename__ = "hero_bounty_progress"
+    __table_args__ = (
+        UniqueConstraint('hero_id', 'active_bounty_id', name='uq_hero_bounty'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    hero_id: Mapped[int] = mapped_column(ForeignKey("heroes.id"), index=True)
+    active_bounty_id: Mapped[int] = mapped_column(ForeignKey("active_bounties.id"), index=True)
+    status: Mapped[str] = mapped_column(nullable=False, default="offered")  # offered, accepted, completed, failed
+    progress_data: Mapped[str] = mapped_column(nullable=False, default='{}')
+    started_at: Mapped[Optional[str]] = mapped_column(nullable=True)
+    completed_at: Mapped[Optional[str]] = mapped_column(nullable=True)
+
+    def __repr__(self):
+        return f"<HeroBountyProgress(hero_id={self.hero_id}, bounty_id={self.active_bounty_id}, status={self.status})>"
+
+
 class QuestNode(Base):
     """Quest node model for storing quest story nodes."""
     __tablename__ = "quest_nodes"
@@ -569,6 +626,158 @@ async def get_quest_chain_info(session: AsyncSession, quest_id: int) -> dict:
             return payload['chain']
         # Backwards compatibility: no chain info
     return {}
+
+
+# Bounty helpers
+async def create_bounty_template(
+    session: AsyncSession,
+    code: str,
+    title: str,
+    description: str,
+    category: str,
+    duration_minutes: int,
+    data: dict,
+    is_active: bool = True
+) -> BountyTemplate:
+    """Insert a new bounty template."""
+    from datetime import datetime
+
+    template = BountyTemplate(
+        code=code,
+        title=title,
+        description=description,
+        category=category,
+        duration_minutes=duration_minutes,
+        data=json.dumps(data, ensure_ascii=False),
+        is_active=is_active,
+        created_at=datetime.utcnow().isoformat(),
+        updated_at=datetime.utcnow().isoformat()
+    )
+
+    session.add(template)
+    await session.commit()
+    await session.refresh(template)
+    return template
+
+
+async def get_active_bounty_templates(session: AsyncSession, category: Optional[str] = None) -> list[BountyTemplate]:
+    """Fetch active bounty templates, optionally filtered by category."""
+
+    stmt = select(BountyTemplate).where(BountyTemplate.is_active == True)
+    if category:
+        stmt = stmt.where(BountyTemplate.category == category)
+
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def create_active_bounty(
+    session: AsyncSession,
+    template_id: int,
+    seed: str,
+    payload: dict,
+    available_from: str,
+    expires_at: str,
+    tier: str = "standard"
+) -> ActiveBounty:
+    """Create a generated bounty entry."""
+
+    bounty = ActiveBounty(
+        template_id=template_id,
+        seed=seed,
+        payload=json.dumps(payload, ensure_ascii=False),
+        available_from=available_from,
+        expires_at=expires_at,
+        tier=tier
+    )
+
+    session.add(bounty)
+    await session.commit()
+    await session.refresh(bounty)
+    return bounty
+
+
+async def get_current_active_bounties(
+    session: AsyncSession,
+    now_iso: Optional[str] = None
+) -> list[ActiveBounty]:
+    """Return bounties that are currently available."""
+
+    from datetime import datetime
+
+    now = datetime.fromisoformat(now_iso) if now_iso else datetime.utcnow()
+
+    result = await session.execute(
+        select(ActiveBounty).where(
+            ActiveBounty.available_from <= now.isoformat(),
+            ActiveBounty.expires_at > now.isoformat()
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def claim_bounty_for_hero(
+    session: AsyncSession,
+    hero_id: int,
+    bounty_id: int
+) -> HeroBountyProgress:
+    """Mark bounty as accepted by the hero or return existing record."""
+
+    result = await session.execute(
+        select(HeroBountyProgress).where(
+            HeroBountyProgress.hero_id == hero_id,
+            HeroBountyProgress.active_bounty_id == bounty_id
+        )
+    )
+    progress = result.scalar_one_or_none()
+    if progress:
+        return progress
+
+    from datetime import datetime
+
+    progress = HeroBountyProgress(
+        hero_id=hero_id,
+        active_bounty_id=bounty_id,
+        status='accepted',
+        progress_data='{}',
+        started_at=datetime.utcnow().isoformat()
+    )
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    return progress
+
+
+async def complete_bounty_for_hero(
+    session: AsyncSession,
+    hero_id: int,
+    bounty_id: int,
+    success: bool = True,
+    progress_data: Optional[dict] = None
+) -> Optional[HeroBountyProgress]:
+    """Update hero bounty progress as completed or failed."""
+
+    result = await session.execute(
+        select(HeroBountyProgress).where(
+            HeroBountyProgress.hero_id == hero_id,
+            HeroBountyProgress.active_bounty_id == bounty_id
+        )
+    )
+    progress = result.scalar_one_or_none()
+    if not progress:
+        return None
+
+    from datetime import datetime
+
+    progress.status = 'completed' if success else 'failed'
+    progress.completed_at = datetime.utcnow().isoformat()
+    if progress_data:
+        progress.progress_data = json.dumps(progress_data, ensure_ascii=False)
+
+    session.add(progress)
+    await session.commit()
+    await session.refresh(progress)
+    return progress
 
 
 # Graph-based quest database functions
