@@ -7,6 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
+from .cache import close_redis
 from .config import Config
 from .database import init_db
 from .handlers import register_handlers
@@ -84,10 +85,13 @@ async def on_startup(app: web.Application):
 async def on_shutdown(app: web.Application):
     """Application shutdown handler."""
     logger.info("Application shutdown")
+    await close_redis()
 
 
 async def create_app() -> web.Application:
     """Create and configure aiohttp application."""
+    Config.validate()
+
     # Initialize bot and dispatcher
     bot = Bot(
         token=Config.BOT_TOKEN,

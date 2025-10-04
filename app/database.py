@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import text
 
+from .cache import cache_delete, cache_get_json, cache_set_json
 from .config import Config
 from models.character import (
     ATTRIBUTE_KEYS,
@@ -221,14 +222,18 @@ class GraphQuestProgress(Base):
 
 # Database setup
 if Config.DATABASE_URL.startswith("sqlite"):
-    # For SQLite, use synchronous engine for migrations
-    sync_engine = create_engine(Config.DATABASE_URL.replace("sqlite:///", "sqlite:///"), echo=False)
-    
-    # Create async engine for SQLite
-    async_database_url = Config.DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
+    # For SQLite, construct both sync and async URLs explicitly
+    sync_engine = create_engine(Config.get_sync_database_url(), echo=False)
+
+    if Config.DATABASE_URL.startswith("sqlite+aiosqlite"):
+        async_database_url = Config.DATABASE_URL
+    else:
+        async_database_url = Config.DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+
     async_engine = create_async_engine(async_database_url, echo=False)
 else:
-    # For PostgreSQL/MySQL, use async engine
+    # For PostgreSQL/MySQL, provide both sync and async engines
+    sync_engine = create_engine(Config.get_sync_database_url(), echo=False)
     async_engine = create_async_engine(Config.DATABASE_URL, echo=False)
 
 # Create async session maker
@@ -520,10 +525,13 @@ async def upsert_quest_requirements(
     if chain:
         payload['chain'] = chain
 
+    cache_key = f"quest:requirements:{quest_id}"
+
     if not payload:
         if row:
             await session.delete(row)
             await session.commit()
+        await cache_delete(cache_key)
         return None
 
     payload_json = json.dumps(payload, ensure_ascii=False)
@@ -544,32 +552,48 @@ async def upsert_quest_requirements(
 
     await session.commit()
     await session.refresh(row)
+    await cache_delete(cache_key)
     return row
 
 
 async def get_quest_requirements(session: AsyncSession, quest_id: int) -> dict:
     """Return decoded quest requirements for the given quest id."""
 
+    cache_key = f"quest:requirements:{quest_id}"
+    cached = await cache_get_json(cache_key)
+    if cached is not None:
+        return cached
+
     result = await session.execute(
         select(QuestRequirement).where(QuestRequirement.quest_id == quest_id)
     )
     row = result.scalar_one_or_none()
     if not row:
+        await cache_set_json(cache_key, {}, ttl_seconds=600)
         return {}
 
     try:
         payload = json.loads(row.payload)
     except json.JSONDecodeError:
         logger.warning("Invalid quest requirement JSON for quest %s", quest_id)
+        await cache_set_json(cache_key, {}, ttl_seconds=120)
         return {}
 
     if not isinstance(payload, dict):
+        await cache_set_json(cache_key, {}, ttl_seconds=120)
         return {}
 
     if 'requires' in payload or 'chain' in payload:
-        return payload.get('requires', {})
+        requires = payload.get('requires', {})
+    else:
+        requires = payload
 
-    return payload
+    if isinstance(requires, dict):
+        await cache_set_json(cache_key, requires, ttl_seconds=600)
+        return requires
+
+    await cache_set_json(cache_key, {}, ttl_seconds=120)
+    return {}
 
 
 async def get_quest_requirements_map(
@@ -582,25 +606,50 @@ async def get_quest_requirements_map(
     if not quest_ids:
         return {}
 
-    result = await session.execute(
-        select(QuestRequirement).where(QuestRequirement.quest_id.in_(quest_ids))
-    )
-
     mapping: Dict[int, dict] = {}
-    for row in result.scalars().all():
-        try:
-            payload = json.loads(row.payload)
-        except json.JSONDecodeError:
-            logger.warning("Invalid quest requirement JSON for quest %s", row.quest_id)
-            continue
-        if not isinstance(payload, dict):
-            continue
-        if 'requires' in payload or 'chain' in payload:
-            requires = payload.get('requires', {})
-        else:
-            requires = payload
-        if isinstance(requires, dict):
-            mapping[row.quest_id] = requires
+    missing_ids: list[int] = []
+
+    for quest_id in quest_ids:
+        cached = await cache_get_json(f"quest:requirements:{quest_id}")
+        if isinstance(cached, dict):
+            mapping[quest_id] = cached
+        elif cached is None:
+            missing_ids.append(quest_id)
+
+    if missing_ids:
+        result = await session.execute(
+            select(QuestRequirement).where(QuestRequirement.quest_id.in_(missing_ids))
+        )
+
+        found_ids: set[int] = set()
+        for row in result.scalars().all():
+            try:
+                payload = json.loads(row.payload)
+            except json.JSONDecodeError:
+                logger.warning("Invalid quest requirement JSON for quest %s", row.quest_id)
+                await cache_set_json(f"quest:requirements:{row.quest_id}", {}, ttl_seconds=120)
+                continue
+
+            if not isinstance(payload, dict):
+                await cache_set_json(f"quest:requirements:{row.quest_id}", {}, ttl_seconds=120)
+                continue
+
+            if 'requires' in payload or 'chain' in payload:
+                requires = payload.get('requires', {})
+            else:
+                requires = payload
+
+            if isinstance(requires, dict):
+                mapping[row.quest_id] = requires
+                await cache_set_json(f"quest:requirements:{row.quest_id}", requires, ttl_seconds=600)
+            else:
+                await cache_set_json(f"quest:requirements:{row.quest_id}", {}, ttl_seconds=120)
+
+            found_ids.add(row.quest_id)
+
+        for quest_id in missing_ids:
+            if quest_id not in found_ids:
+                await cache_set_json(f"quest:requirements:{quest_id}", {}, ttl_seconds=120)
 
     return mapping
 
