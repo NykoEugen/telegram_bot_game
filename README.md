@@ -109,6 +109,7 @@ Once the bot is running, users can interact with these commands:
 - `/info` - Display user information
 - `/ping` - Test bot responsiveness
 - `/time` - Show current time
+- `/bounties` - Browse procedurally generated repeatable missions
 
 ## Database Schema
 
@@ -240,3 +241,11 @@ For questions and support:
 - Check the [aiogram documentation](https://docs.aiogram.dev/)
 - Review the [Telegram Bot API documentation](https://core.telegram.org/bots/api)
 - Open an issue in this repository
+## Content Initializers
+
+For quest lines and repeatable content, run the following helpers after applying migrations:
+
+```bash
+python -m app.initializers.graph_quests   # syncs graph quest data from JSON
+python -m app.initializers.bounties       # seeds bounty templates used by /bounties
+```

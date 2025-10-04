@@ -1,7 +1,7 @@
 """
 Custom inline keyboard builder for quest system.
 """
-from typing import List, Optional
+from typing import Dict, List, Optional
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -230,6 +230,46 @@ class GraphQuestKeyboardBuilder:
         else:
             builder.adjust(1)
         
+        return builder.as_markup()
+
+
+class BountyKeyboardBuilder:
+    """Inline keyboards for bounty board interactions."""
+
+    @staticmethod
+    def bounty_list_keyboard(bounties: List[Dict[str, object]]) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+
+        for bounty in bounties:
+            payload = bounty.get('payload', {}) if isinstance(bounty, dict) else {}
+            title = payload.get('title') or bounty.get('title') or 'Bounty'
+            builder.button(
+                text=f"🎯 {title}",
+                callback_data=f"bounty_view:{bounty['id']}"
+            )
+
+        builder.button(text="🔄 Оновити", callback_data="bounty_refresh")
+        builder.adjust(1)
+        return builder.as_markup()
+
+    @staticmethod
+    def bounty_detail_keyboard(bounty_id: int, accepted: bool) -> InlineKeyboardMarkup:
+        builder = InlineKeyboardBuilder()
+        if not accepted:
+            builder.button(
+                text="✅ Прийняти",
+                callback_data=f"bounty_accept:{bounty_id}"
+            )
+        else:
+            builder.button(
+                text="🏁 Завершити",
+                callback_data=f"bounty_complete:{bounty_id}"
+            )
+        builder.button(
+            text="⬅️ Назад",
+            callback_data="bounty_back"
+        )
+        builder.adjust(1, 1)
         return builder.as_markup()
     
     @staticmethod
