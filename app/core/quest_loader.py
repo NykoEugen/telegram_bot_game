@@ -47,6 +47,24 @@ class QuestLoader:
                 return quest_data
         
         return None
+
+    @classmethod
+    def get_quest_requirements(cls, quest_id: int) -> Dict[str, Any]:
+        """Return raw requirements dictionary for a quest, if present."""
+        quest_data = cls.get_quest_by_id(quest_id)
+        if not quest_data:
+            return {}
+        requires = quest_data.get('requires')
+        return requires if isinstance(requires, dict) else {}
+
+    @classmethod
+    def get_quest_chain(cls, quest_id: int) -> Dict[str, Any]:
+        """Return quest chain metadata defined in JSON."""
+        quest_data = cls.get_quest_by_id(quest_id)
+        if not quest_data:
+            return {}
+        chain = quest_data.get('chain')
+        return chain if isinstance(chain, dict) else {}
     
     @classmethod
     def get_quest_nodes(cls, quest_id: int) -> List[Dict[str, Any]]:
