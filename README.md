@@ -1,12 +1,13 @@
 # Telegram Bot Game - Base Skeleton
 
-A modern Telegram bot skeleton built with aiogram 3.13, featuring webhook support, SQLite database, and async architecture. This skeleton is designed to be a starting point for building Telegram games and interactive bots.
+A modern Telegram bot skeleton built with aiogram 3.13, featuring webhook support, PostgreSQL persistence managed through Alembic migrations, Redis-backed caching, and an async-first architecture. This skeleton is designed to be a starting point for building Telegram games and interactive bots.
 
 ## Features
 
 - 🤖 **aiogram 3.13** - Modern async Telegram Bot API framework
 - 🔗 **Webhook Support** - Efficient webhook-based updates instead of polling
-- 🗄️ **SQLite Database** - Built-in user management and data persistence
+- 🗄️ **PostgreSQL + Alembic** - Production-ready database with versioned migrations
+- 🧠 **Redis Caching** - Shared cache layer for expensive lookups
 - ⚡ **Async/Await** - Fully asynchronous architecture for better performance
 - 🛡️ **Middleware** - Logging, rate limiting, and user validation
 - 🚀 **ngrok Integration** - Easy local development with ngrok tunneling
@@ -39,66 +40,45 @@ telegram_bot_game/
 
 ### 1. Prerequisites
 
-- Python 3.8+
+- Docker & Docker Compose (recommended) **or** Python 3.11+, PostgreSQL 15+, and Redis 7+
 - Telegram Bot Token (from [@BotFather](https://t.me/botfather))
-- ngrok (for local development)
+- ngrok (for webhook development)
 
-### 2. Installation
+### 2. Configuration
 
 ```bash
-# Clone or download the project
-cd telegram_bot_game
+cp env.template .env
+# Edit .env to provide BOT_TOKEN, webhook settings, and optional DB credentials
+```
 
-# Create virtual environment
+If you plan to run the stack with Docker Compose, the defaults in `env.template` match the service hostnames (`postgres`, `redis`). For local execution point the URLs at your own installations.
+
+### 3. Run with Docker Compose (recommended)
+
+```bash
+docker compose up --build
+```
+
+The application waits for PostgreSQL, runs `alembic upgrade head`, and then starts the webhook server. Redis caching is enabled automatically.
+
+### 4. Manual setup (optional)
+
+```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Configuration
-
-```bash
-# Copy environment template
-cp env.template .env
-
-# Edit .env file with your configuration
-nano .env  # or use your preferred editor
-```
-
-Required environment variables:
-```bash
-BOT_TOKEN=your_bot_token_from_botfather
-WEBHOOK_DOMAIN=your-ngrok-domain.ngrok.io
-WEBHOOK_SECRET=your_webhook_secret_token
-```
-
-### 4. Setup ngrok (for local development)
-
-```bash
-# Install ngrok (if not already installed)
-# Download from https://ngrok.com/download
-
-# Start ngrok tunnel
-ngrok http 8080
-
-# Copy the HTTPS URL (e.g., https://abc123.ngrok.io)
-# Update WEBHOOK_DOMAIN in your .env file
-```
-
-### 5. Run the Bot
-
-```bash
-# Start the bot
+# Ensure PostgreSQL & Redis are running and DATABASE_URL / REDIS_URL are configured
+alembic upgrade head
 python start.py
 ```
 
-The bot will:
-- Initialize the SQLite database
-- Set up the webhook with Telegram
-- Start listening on the specified port
-- Log all activities to console
+### 5. Setup ngrok (for webhook testing)
+
+```bash
+ngrok http 8080
+# Update WEBHOOK_DOMAIN in .env with the forwarded HTTPS host
+```
 
 ## Available Commands
 
@@ -175,7 +155,7 @@ class CustomMiddleware(BaseMiddleware):
 For production deployment:
 
 1. **Use a proper web server** (nginx, Apache) as a reverse proxy
-2. **Use PostgreSQL or MySQL** instead of SQLite for better performance
+2. **Provision managed PostgreSQL** with backups and connection pooling
 3. **Set up proper logging** with log rotation
 4. **Use environment variables** for all sensitive configuration
 5. **Enable SSL/TLS** for webhook endpoints
@@ -207,8 +187,8 @@ LOG_LEVEL=WARNING
    - Ensure the domain is accessible via HTTPS
 
 3. **Database errors**
-   - Check file permissions for the SQLite database
-   - Ensure the directory is writable
+   - Confirm PostgreSQL is running and credentials in `DATABASE_URL` are correct
+   - Run `alembic upgrade head` to apply pending migrations
 
 4. **ngrok connection issues**
    - Verify ngrok is running and accessible
