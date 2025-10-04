@@ -521,7 +521,22 @@
             "special_tags": [
               "lore"
             ]
-          }
+          },
+          "events": [
+            {
+              "id": "rune_flare_trap",
+              "type": "stat_check",
+              "attribute": "agi",
+              "difficulty": 12,
+              "success": {
+                "text": "Ви спритно ковзаєте між рунічними спалахами, уникаючи ушкоджень."
+              },
+              "failure": {
+                "text": "Рунічне полум'я обпікає вас (-8 HP).",
+                "damage": 8
+              }
+            }
+          ]
         },
         {
           "id": "dream_pool",
@@ -537,7 +552,21 @@
             "special_tags": [
               "insight"
             ]
-          }
+          },
+          "events": [
+            {
+              "id": "dream_pool_vision",
+              "type": "puzzle",
+              "text": "Ви складаєте фрагменти видіння в одну мелодію й відчуваєте нове розуміння.",
+              "reward": {
+                "world_flags": {
+                  "set": {
+                    "moonwell_recovery.dream_insight": true
+                  }
+                }
+              }
+            }
+          ]
         },
         {
           "id": "tidal_riddle",
@@ -553,7 +582,27 @@
             "special_tags": [
               "riddle"
             ]
-          }
+          },
+          "events": [
+            {
+              "id": "tidal_story_hint",
+              "type": "story_moment",
+              "text": "Шепіт Місячної Криниці відкриває вам справжнє значення фрази \"Silence that listens\".",
+              "reward": {
+                "world_flags": {
+                  "set": {
+                    "moonwell_recovery.riddle_hint": true
+                  }
+                },
+                "metrics": [
+                  {
+                    "name": "story_moments",
+                    "amount": 1
+                  }
+                ]
+              }
+            }
+          ]
         },
         {
           "id": "cipher_confused",

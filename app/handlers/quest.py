@@ -275,7 +275,23 @@ async def cmd_quest(message: Message):
 
             current_node = quest_data['current_node']
             connections = quest_data['connections']
-            
+            event_messages = quest_data.get('event_messages') or []
+
+            if quest_data.get('recovery_required'):
+                recovery_lines = [
+                    f"{hbold('Потрібне відновлення!')}",
+                    "Герой занадто виснажений після події. Відновіть здоров'я у місті, щоб продовжити."
+                ]
+                if event_messages:
+                    recovery_lines.append("")
+                    recovery_lines.extend(event_messages)
+                from app.keyboards import GraphQuestKeyboardBuilder
+                await message.answer(
+                    "\n".join(recovery_lines),
+                    reply_markup=GraphQuestKeyboardBuilder.graph_quest_menu_keyboard(quest.id, current_node.id)
+                )
+                return
+
             # Send quest start message
             quest_text = (
                 f"{hbold('🎯 Graph Quest Started!')}\n\n"
@@ -284,6 +300,9 @@ async def cmd_quest(message: Message):
                 f"{current_node.description}\n\n"
                 f"What will you do?"
             )
+
+            if event_messages:
+                quest_text += "\n\n" + "\n".join(event_messages)
             
             keyboard = GraphQuestKeyboardBuilder.graph_quest_choice_keyboard(
                 quest.id, current_node.id, connections
@@ -307,7 +326,8 @@ async def cmd_quest(message: Message):
         return
 
     current_node = quest_data['current_node']
-    
+    event_messages = quest_data.get('event_messages') or []
+
     quest_text = (
         f"{hbold('🎯 Quest Started!')}\n\n"
         f"{hbold(quest.title)}\n\n"
@@ -315,6 +335,9 @@ async def cmd_quest(message: Message):
         f"{current_node.description}\n\n"
         f"What will you do?"
     )
+
+    if event_messages:
+        quest_text += "\n\n" + "\n".join(event_messages)
     
     keyboard = QuestKeyboardBuilder.quest_choice_keyboard(quest.id, current_node.id)
     await message.answer(quest_text, reply_markup=keyboard)
@@ -345,6 +368,26 @@ async def handle_quest_start(callback: CallbackQuery):
                 return
             current_node = quest_data['current_node']
             connections = quest_data['connections']
+            event_messages = quest_data.get('event_messages') or []
+
+            if quest_data.get('recovery_required'):
+                recovery_lines = [
+                    f"{hbold('Потрібне відновлення!')}",
+                    "Герой занадто виснажений після події. Відновіть здоров'я у місті, щоб продовжити."
+                ]
+                if event_messages:
+                    recovery_lines.append("")
+                    recovery_lines.extend(event_messages)
+                keyboard = GraphQuestKeyboardBuilder.graph_quest_menu_keyboard(
+                    quest.id,
+                    current_node.id
+                )
+                await callback.message.edit_text(
+                    "\n".join(recovery_lines),
+                    reply_markup=keyboard
+                )
+                await callback.answer("Спершу відновіться", show_alert=True)
+                return
             
             quest_text = (
                 f"{hbold('🎯 Graph Quest Started!')}\n\n"
@@ -353,6 +396,9 @@ async def handle_quest_start(callback: CallbackQuery):
                 f"{current_node.description}\n\n"
                 f"What will you do?"
             )
+
+            if event_messages:
+                quest_text += "\n\n" + "\n".join(event_messages)
             
             keyboard = GraphQuestKeyboardBuilder.graph_quest_choice_keyboard(
                 quest.id, current_node.id, connections
@@ -379,7 +425,8 @@ async def handle_quest_start(callback: CallbackQuery):
         return
 
     current_node = quest_data['current_node']
-    
+    event_messages = quest_data.get('event_messages') or []
+
     quest_text = (
         f"{hbold('🎯 Quest Started!')}\n\n"
         f"{hbold(quest.title)}\n\n"
@@ -387,7 +434,10 @@ async def handle_quest_start(callback: CallbackQuery):
         f"{current_node.description}\n\n"
         f"What will you do?"
     )
-    
+
+    if event_messages:
+        quest_text += "\n\n" + "\n".join(event_messages)
+
     keyboard = QuestKeyboardBuilder.quest_choice_keyboard(quest.id, current_node.id)
     await callback.message.edit_text(quest_text, reply_markup=keyboard)
     await callback.answer()
