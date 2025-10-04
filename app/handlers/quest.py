@@ -21,9 +21,14 @@ from app.database import (
     update_quest_progress,
     get_active_quests,
     get_hero_for_telegram,
+    get_quest_requirements_map,
 )
 from app.keyboards import QuestKeyboardBuilder
 from app.services.progression import record_progress_messages
+from app.core.quest_requirements import (
+    batch_check_quest_requirements,
+    check_quest_requirements,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +72,21 @@ class QuestManager:
                     'current_node': current_node,
                     'progress': existing_progress
                 }
-            
+
+            hero = await get_hero_for_telegram(session, user_id)
+            requirement_result = await check_quest_requirements(
+                session=session,
+                quest_id=quest.id,
+                user_id=user_id,
+                hero_id=hero.id if hero else None,
+            )
+            if not requirement_result.met:
+                return {
+                    'quest': quest,
+                    'requirements': requirement_result.requirements,
+                    'locked_reasons': requirement_result.missing_reasons,
+                }
+
             # Get start node
             start_node = await get_quest_start_node(session, quest_id)
             if not start_node:
@@ -170,22 +189,51 @@ async def cmd_quests(message: Message):
                 f"No quests are currently available. Check back later!"
             )
             return
-        
-        quest_list = []
+
+        hero = await get_hero_for_telegram(session, message.from_user.id)
+        hero_id = hero.id if hero else None
+
+        quest_ids = [quest.id for quest in quests]
+        requirements_map = await get_quest_requirements_map(session, quest_ids)
+        requirement_results = await batch_check_quest_requirements(
+            session=session,
+            quest_ids=quest_ids,
+            user_id=message.from_user.id,
+            hero_id=hero_id,
+            requirements_map=requirements_map,
+        )
+
+        available: list = []
+        locked: list = []
         for quest in quests:
-            quest_list.append({
-                'id': quest.id,
-                'title': quest.title
-            })
-        
-        # Use GraphQuestKeyboardBuilder for all quests
-        from app.keyboards import GraphQuestKeyboardBuilder
-        keyboard = GraphQuestKeyboardBuilder.graph_quest_list_keyboard(quest_list)
-        
+            result = requirement_results.get(quest.id)
+            if not result or result.met:
+                available.append(quest)
+            else:
+                locked.append((quest, result))
+
         quest_text = f"{hbold('Available Quests')}\n\n"
-        for quest in quests:
-            quest_text += f"🎯 {hbold(quest.title)}\n{quest.description}\n\n"
-        
+
+        if available:
+            for quest in available:
+                quest_text += f"🎯 {hbold(quest.title)}\n{quest.description}\n\n"
+        else:
+            quest_text += "Наразі немає квестів, які ви можете розпочати.\n\n"
+
+        if locked:
+            quest_text += f"{hbold('🔒 Недоступні квести')}\n\n"
+            for quest, result in locked:
+                quest_text += f"🚫 {hbold(quest.title)}\n"
+                for reason in result.missing_reasons:
+                    quest_text += f"- {reason}\n"
+                quest_text += "\n"
+
+        from app.keyboards import GraphQuestKeyboardBuilder
+
+        keyboard = GraphQuestKeyboardBuilder.graph_quest_list_keyboard([
+            {'id': quest.id, 'title': quest.title} for quest in available
+        ])
+
         await message.answer(quest_text, reply_markup=keyboard)
 
 
@@ -218,6 +266,13 @@ async def cmd_quest(message: Message):
         
         if quest_data:
             quest = quest_data['quest']
+            if quest_data.get('locked_reasons'):
+                reasons = "\n".join(f"- {reason}" for reason in quest_data['locked_reasons'])
+                await message.answer(
+                    f"{hbold(quest.title)} наразі недоступний.\n\n{reasons}"
+                )
+                return
+
             current_node = quest_data['current_node']
             connections = quest_data['connections']
             
@@ -236,8 +291,33 @@ async def cmd_quest(message: Message):
             await message.answer(quest_text, reply_markup=keyboard)
             return
     
-    # Fall back to regular quest system for other quests
-    await message.answer("This quest type is not yet supported. Please use graph quests (ID >= 1).")
+    quest_data = await QuestManager.start_quest(user_id, quest_id)
+
+    if not quest_data:
+        await message.answer("Quest not found or cannot be started.")
+        return
+
+    quest = quest_data['quest']
+
+    if quest_data.get('locked_reasons'):
+        reasons = "\n".join(f"- {reason}" for reason in quest_data['locked_reasons'])
+        await message.answer(
+            f"{hbold(quest.title)} наразі недоступний.\n\n{reasons}"
+        )
+        return
+
+    current_node = quest_data['current_node']
+    
+    quest_text = (
+        f"{hbold('🎯 Quest Started!')}\n\n"
+        f"{hbold(quest.title)}\n\n"
+        f"{hbold(current_node.title)}\n"
+        f"{current_node.description}\n\n"
+        f"What will you do?"
+    )
+    
+    keyboard = QuestKeyboardBuilder.quest_choice_keyboard(quest.id, current_node.id)
+    await message.answer(quest_text, reply_markup=keyboard)
 
 
 # Quest callback handlers
@@ -256,6 +336,13 @@ async def handle_quest_start(callback: CallbackQuery):
         
         if quest_data:
             quest = quest_data['quest']
+            if quest_data.get('locked_reasons'):
+                reasons = "\n".join(f"- {reason}" for reason in quest_data['locked_reasons'])
+                await callback.message.answer(
+                    f"{hbold(quest.title)} наразі недоступний.\n\n{reasons}"
+                )
+                await callback.answer("Quest locked", show_alert=True)
+                return
             current_node = quest_data['current_node']
             connections = quest_data['connections']
             
@@ -280,8 +367,17 @@ async def handle_quest_start(callback: CallbackQuery):
     if not quest_data:
         await callback.answer("Quest not found or cannot be started.", show_alert=True)
         return
-    
+
     quest = quest_data['quest']
+
+    if quest_data.get('locked_reasons'):
+        reasons = "\n".join(f"- {reason}" for reason in quest_data['locked_reasons'])
+        await callback.message.answer(
+            f"{hbold(quest.title)} наразі недоступний.\n\n{reasons}"
+        )
+        await callback.answer("Quest locked", show_alert=True)
+        return
+
     current_node = quest_data['current_node']
     
     quest_text = (

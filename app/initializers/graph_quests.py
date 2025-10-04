@@ -4,6 +4,7 @@ Graph Quest initialization script to create sample graph-based quests.
 import asyncio
 import logging
 import json
+
 from app.database import (
     AsyncSessionLocal,
     create_quest,
@@ -11,7 +12,8 @@ from app.database import (
     create_graph_quest_connection,
     get_quest_by_id,
     get_quest_by_title,
-    delete_graph_quest_structure
+    delete_graph_quest_structure,
+    upsert_quest_requirements,
 )
 from app.core.quest_loader import QuestLoader
 
@@ -49,6 +51,13 @@ async def create_quest_from_json(quest_id: int):
                 description=quest_data['description']
             )
             logger.info(f"Created quest: {quest.title} (ID: {quest.id})")
+
+        await upsert_quest_requirements(
+            session,
+            quest.id,
+            quest_data.get('requires'),
+            quest_data.get('chain')
+        )
         
         # Create quest nodes
         nodes_data = quest_data.get('nodes', [])
@@ -56,11 +65,15 @@ async def create_quest_from_json(quest_id: int):
         
         for node_data in nodes_data:
             # Prepare node_data JSON with encounter_tags if present
-            node_json_data = None
+            node_payload = {}
             if 'encounter_tags' in node_data:
-                node_json_data = json.dumps({
-                    'encounter_tags': node_data['encounter_tags']
-                })
+                node_payload['encounter_tags'] = node_data['encounter_tags']
+            if 'world_flags' in node_data:
+                node_payload['world_flags'] = node_data['world_flags']
+            if 'chain' in node_data:
+                node_payload['chain'] = node_data['chain']
+
+            node_json_data = json.dumps(node_payload, ensure_ascii=False) if node_payload else None
             
             node = await create_graph_quest_node(
                 session=session,
@@ -81,12 +94,21 @@ async def create_quest_from_json(quest_id: int):
             to_node_id = node_id_to_db_id.get(connection_data['to'])
             
             if from_node_id and to_node_id:
+                connection_payload = {}
+                if 'conditions' in connection_data:
+                    connection_payload['conditions'] = connection_data['conditions']
+                if 'effects' in connection_data:
+                    connection_payload['effects'] = connection_data['effects']
+
+                condition_json = json.dumps(connection_payload, ensure_ascii=False) if connection_payload else None
+
                 await create_graph_quest_connection(
                     session=session,
                     from_node_id=from_node_id,
                     to_node_id=to_node_id,
                     connection_type=connection_data['type'],
                     choice_text=connection_data.get('choice_text'),
+                    condition_data=condition_json,
                     order=connection_data.get('order', 1)
                 )
         

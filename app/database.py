@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Dict, Iterable, Optional
 
 from sqlalchemy import create_engine, select, delete, UniqueConstraint, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -54,6 +54,21 @@ class Quest(Base):
     
     def __repr__(self):
         return f"<Quest(id={self.id}, title={self.title})>"
+
+
+class QuestRequirement(Base):
+    """Stores quest prerequisite payloads as JSON."""
+
+    __tablename__ = "quest_requirements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quest_id: Mapped[int] = mapped_column(ForeignKey("quests.id"), unique=True, index=True)
+    payload: Mapped[str] = mapped_column(nullable=False)
+    created_at: Mapped[str] = mapped_column(nullable=False)
+    updated_at: Mapped[str] = mapped_column(nullable=False)
+
+    def __repr__(self):
+        return f"<QuestRequirement(quest_id={self.quest_id})>"
 
 
 class QuestNode(Base):
@@ -382,6 +397,18 @@ async def get_user_quest_progress(
     return None
 
 
+async def get_completed_quest_ids(session: AsyncSession, user_id: int) -> set[int]:
+    """Return IDs of quests the user has completed."""
+
+    result = await session.execute(
+        select(QuestProgress.quest_id).where(
+            QuestProgress.user_id == user_id,
+            QuestProgress.status == 'completed'
+        )
+    )
+    return set(result.scalars().all())
+
+
 async def update_quest_progress(
     session: AsyncSession,
     progress: QuestProgress,
@@ -410,6 +437,138 @@ async def get_active_quests(session: AsyncSession) -> list[Quest]:
         select(Quest).where(Quest.is_active == True)
     )
     return list(result.scalars().all())
+
+
+async def upsert_quest_requirements(
+    session: AsyncSession,
+    quest_id: int,
+    requirements: Optional[dict],
+    chain: Optional[dict] = None
+) -> Optional[QuestRequirement]:
+    """Store quest requirement and chain metadata as JSON payload.
+
+    Passing no data removes existing metadata.
+    """
+
+    from datetime import datetime
+
+    result = await session.execute(
+        select(QuestRequirement).where(QuestRequirement.quest_id == quest_id)
+    )
+    row = result.scalar_one_or_none()
+
+    payload: dict = {}
+    if requirements:
+        payload['requires'] = requirements
+    if chain:
+        payload['chain'] = chain
+
+    if not payload:
+        if row:
+            await session.delete(row)
+            await session.commit()
+        return None
+
+    payload_json = json.dumps(payload, ensure_ascii=False)
+    now = datetime.utcnow().isoformat()
+
+    if row:
+        row.payload = payload_json
+        row.updated_at = now
+        session.add(row)
+    else:
+        row = QuestRequirement(
+            quest_id=quest_id,
+            payload=payload_json,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(row)
+
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
+async def get_quest_requirements(session: AsyncSession, quest_id: int) -> dict:
+    """Return decoded quest requirements for the given quest id."""
+
+    result = await session.execute(
+        select(QuestRequirement).where(QuestRequirement.quest_id == quest_id)
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        return {}
+
+    try:
+        payload = json.loads(row.payload)
+    except json.JSONDecodeError:
+        logger.warning("Invalid quest requirement JSON for quest %s", quest_id)
+        return {}
+
+    if not isinstance(payload, dict):
+        return {}
+
+    if 'requires' in payload or 'chain' in payload:
+        return payload.get('requires', {})
+
+    return payload
+
+
+async def get_quest_requirements_map(
+    session: AsyncSession,
+    quest_ids: Iterable[int]
+) -> Dict[int, dict]:
+    """Return requirements payload for multiple quests in a single query."""
+
+    quest_ids = list({int(qid) for qid in quest_ids if qid is not None})
+    if not quest_ids:
+        return {}
+
+    result = await session.execute(
+        select(QuestRequirement).where(QuestRequirement.quest_id.in_(quest_ids))
+    )
+
+    mapping: Dict[int, dict] = {}
+    for row in result.scalars().all():
+        try:
+            payload = json.loads(row.payload)
+        except json.JSONDecodeError:
+            logger.warning("Invalid quest requirement JSON for quest %s", row.quest_id)
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if 'requires' in payload or 'chain' in payload:
+            requires = payload.get('requires', {})
+        else:
+            requires = payload
+        if isinstance(requires, dict):
+            mapping[row.quest_id] = requires
+
+    return mapping
+
+
+async def get_quest_chain_info(session: AsyncSession, quest_id: int) -> dict:
+    """Return quest chain metadata for a quest."""
+
+    result = await session.execute(
+        select(QuestRequirement).where(QuestRequirement.quest_id == quest_id)
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        return {}
+
+    try:
+        payload = json.loads(row.payload)
+    except json.JSONDecodeError:
+        logger.warning("Invalid quest requirement JSON for quest %s", quest_id)
+        return {}
+
+    if isinstance(payload, dict):
+        if 'chain' in payload and isinstance(payload['chain'], dict):
+            return payload['chain']
+        # Backwards compatibility: no chain info
+    return {}
 
 
 # Graph-based quest database functions
@@ -644,6 +803,18 @@ async def get_graph_quest_progresses_for_user(
     return list(result.scalars().all())
 
 
+async def get_completed_graph_quest_ids(session: AsyncSession, user_id: int) -> set[int]:
+    """Return IDs of graph quests the user has completed."""
+
+    result = await session.execute(
+        select(GraphQuestProgress.quest_id).where(
+            GraphQuestProgress.user_id == user_id,
+            GraphQuestProgress.status == 'completed'
+        )
+    )
+    return set(result.scalars().all())
+
+
 async def get_graph_quest_by_id(session: AsyncSession, quest_id: int) -> Optional[Quest]:
     """Get quest by ID (works for both regular and graph quests)."""
     result = await session.execute(
@@ -764,6 +935,7 @@ class Hero(Base):
     weekly_progress: Mapped[str] = mapped_column(default='{}')
     daily_reset_at: Mapped[Optional[str]] = mapped_column(nullable=True)
     weekly_reset_at: Mapped[Optional[str]] = mapped_column(nullable=True)
+    world_flags: Mapped[str] = mapped_column(nullable=False, default='{}')
     
     # Timestamps
     created_at: Mapped[str] = mapped_column(nullable=False)
@@ -771,6 +943,24 @@ class Hero(Base):
     
     def __repr__(self):
         return f"<Hero(id={self.id}, user_id={self.user_id}, name={self.name}, level={self.level})>"
+
+
+class HeroReputation(Base):
+    """Per-hero reputation standing with a specific faction."""
+
+    __tablename__ = "hero_reputation"
+    __table_args__ = (
+        UniqueConstraint('hero_id', 'faction_code', name='uq_hero_faction'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    hero_id: Mapped[int] = mapped_column(ForeignKey("heroes.id"), index=True)
+    faction_code: Mapped[str] = mapped_column(nullable=False)
+    score: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[str] = mapped_column(nullable=False)
+
+    def __repr__(self):
+        return f"<HeroReputation(hero_id={self.hero_id}, faction_code={self.faction_code}, score={self.score})>"
 
 
 class Achievement(Base):
@@ -1227,6 +1417,7 @@ async def create_hero(
         talents='[]',
         daily_progress='{}',
         weekly_progress='{}',
+        world_flags='{}',
         daily_reset_at=datetime.utcnow().isoformat(),
         weekly_reset_at=datetime.utcnow().isoformat(),
         created_at=datetime.utcnow().isoformat(),
@@ -1267,6 +1458,142 @@ async def get_hero_for_telegram(session: AsyncSession, telegram_user_id: int) ->
         return None
 
     return await get_hero_by_user_id(session, user.id)
+
+
+async def _get_hero_reputation_row(
+    session: AsyncSession,
+    hero_id: int,
+    faction_code: str
+) -> Optional[HeroReputation]:
+    result = await session.execute(
+        select(HeroReputation).where(
+            HeroReputation.hero_id == hero_id,
+            HeroReputation.faction_code == faction_code,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_hero_reputation_value(
+    session: AsyncSession,
+    hero_id: int,
+    faction_code: str
+) -> int:
+    """Return hero reputation score for given faction, defaulting to zero."""
+
+    row = await _get_hero_reputation_row(session, hero_id, faction_code)
+    return row.score if row else 0
+
+
+async def get_hero_reputation_map(session: AsyncSession, hero_id: int) -> Dict[str, int]:
+    """Return mapping of faction code to reputation score for the hero."""
+
+    result = await session.execute(
+        select(HeroReputation).where(HeroReputation.hero_id == hero_id)
+    )
+    return {row.faction_code: row.score for row in result.scalars().all()}
+
+
+async def adjust_hero_reputation(
+    session: AsyncSession,
+    hero_id: int,
+    faction_code: str,
+    delta: int
+) -> HeroReputation:
+    """Increment hero reputation by delta, returning the updated row."""
+
+    if delta == 0:
+        row = await _get_hero_reputation_row(session, hero_id, faction_code)
+        if row:
+            return row
+
+    from datetime import datetime
+
+    row = await _get_hero_reputation_row(session, hero_id, faction_code)
+    now = datetime.utcnow().isoformat()
+
+    if row:
+        row.score += delta
+        row.updated_at = now
+        session.add(row)
+    else:
+        row = HeroReputation(
+            hero_id=hero_id,
+            faction_code=faction_code,
+            score=delta,
+            updated_at=now,
+        )
+        session.add(row)
+
+    await session.commit()
+    await session.refresh(row)
+    return row
+
+
+def _deserialize_flags(raw: str | None) -> Dict[str, object]:
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+async def get_hero_world_flags(session: AsyncSession, hero_id: int) -> Dict[str, object]:
+    """Return hero world flags as a dictionary."""
+
+    hero = await get_hero_by_id(session, hero_id)
+    if not hero:
+        return {}
+    return _deserialize_flags(hero.world_flags)
+
+
+async def set_hero_world_flags(
+    session: AsyncSession,
+    hero_id: int,
+    flags: Dict[str, object]
+) -> Dict[str, object]:
+    """Replace hero world flags with provided dictionary."""
+
+    hero = await get_hero_by_id(session, hero_id)
+    if not hero:
+        raise ValueError(f"Hero with id {hero_id} not found")
+
+    hero.world_flags = json.dumps(flags, ensure_ascii=False)
+    session.add(hero)
+    await session.commit()
+    await session.refresh(hero)
+    return _deserialize_flags(hero.world_flags)
+
+
+async def update_hero_world_flags(
+    session: AsyncSession,
+    hero_id: int,
+    set_flags: Optional[Dict[str, object]] = None,
+    clear_flags: Optional[Iterable[str]] = None
+) -> Dict[str, object]:
+    """Apply incremental world flag updates for the hero."""
+
+    hero = await get_hero_by_id(session, hero_id)
+    if not hero:
+        raise ValueError(f"Hero with id {hero_id} not found")
+
+    flags = _deserialize_flags(hero.world_flags)
+
+    if set_flags:
+        for key, value in set_flags.items():
+            flags[str(key)] = value
+
+    if clear_flags:
+        for key in clear_flags:
+            flags.pop(str(key), None)
+
+    hero.world_flags = json.dumps(flags, ensure_ascii=False)
+    session.add(hero)
+    await session.commit()
+    await session.refresh(hero)
+    return flags
 
 
 async def update_hero(session: AsyncSession, hero: Hero) -> Hero:

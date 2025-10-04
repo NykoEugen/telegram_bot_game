@@ -26,6 +26,8 @@ from app.database import (
     get_hero_by_user_id,
     get_hero_class_by_id,
     get_hero_for_telegram,
+    get_quest_chain_info,
+    update_hero_world_flags,
     GraphQuestNode,
     GraphQuestConnection,
     GraphQuestProgress
@@ -34,6 +36,7 @@ from app.core.hero_system import HeroCalculator
 from app.core.encounter_system import EncounterResult, EncounterType, Biome, Difficulty
 from app.keyboards import GraphQuestKeyboardBuilder, get_main_menu_keyboard
 from app.services.progression import record_progress_messages
+from app.core.quest_requirements import check_quest_requirements
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +107,149 @@ class GraphQuestManager:
         except (KeyError, ValueError):
             logger.warning("Failed to deserialize encounter data: %s", data)
             return None
+
+    @staticmethod
+    def _parse_world_flags(hero) -> Dict[str, Any]:
+        if not hero or not getattr(hero, 'world_flags', None):
+            return {}
+        try:
+            flags = json.loads(hero.world_flags)
+            return flags if isinstance(flags, dict) else {}
+        except json.JSONDecodeError:
+            logger.warning("Invalid world_flags JSON for hero %s", getattr(hero, 'id', '?'))
+            return {}
+
+    @staticmethod
+    def _parse_connection_payload(connection: GraphQuestConnection) -> Dict[str, Any]:
+        if not connection.condition_data:
+            return {}
+        try:
+            payload = json.loads(connection.condition_data)
+            return payload if isinstance(payload, dict) else {}
+        except json.JSONDecodeError:
+            logger.warning(
+                "Invalid connection condition JSON for connection %s", connection.id
+            )
+            return {}
+
+    @staticmethod
+    def _connection_allowed(hero_flags: Dict[str, Any], payload: Dict[str, Any]) -> bool:
+        conditions = payload.get('conditions') if isinstance(payload, dict) else None
+        if not conditions:
+            return True
+
+        flag_conditions = conditions.get('world_flags') if isinstance(conditions, dict) else None
+        if flag_conditions:
+            required = flag_conditions.get('has', {}) if isinstance(flag_conditions, dict) else {}
+            if isinstance(required, dict):
+                for key, expected in required.items():
+                    if hero_flags.get(key) != expected:
+                        return False
+
+            missing = flag_conditions.get('missing') if isinstance(flag_conditions, dict) else None
+            if missing:
+                for key in missing:
+                    if key in hero_flags:
+                        return False
+
+        return True
+
+    @staticmethod
+    def _filter_connections_for_flags(
+        hero_flags: Dict[str, Any],
+        connections: List[GraphQuestConnection]
+    ) -> List[GraphQuestConnection]:
+        filtered: List[GraphQuestConnection] = []
+        for connection in connections:
+            payload = GraphQuestManager._parse_connection_payload(connection)
+            if GraphQuestManager._connection_allowed(hero_flags, payload):
+                filtered.append(connection)
+        return filtered
+
+    @staticmethod
+    async def _apply_connection_effects(
+        session,
+        hero,
+        payload: Dict[str, Any]
+    ) -> None:
+        if not hero or not payload:
+            return
+
+        effects = payload.get('effects') if isinstance(payload, dict) else None
+        if not effects:
+            return
+
+        world_flags = effects.get('world_flags') if isinstance(effects, dict) else None
+        if not world_flags:
+            return
+
+        set_flags = world_flags.get('set') if isinstance(world_flags, dict) else None
+        clear_flags = world_flags.get('clear') if isinstance(world_flags, dict) else None
+
+        updated_flags = await update_hero_world_flags(
+            session,
+            hero.id,
+            set_flags=set_flags if isinstance(set_flags, dict) else None,
+            clear_flags=clear_flags if isinstance(clear_flags, (list, tuple, set)) else None
+        )
+        hero.world_flags = json.dumps(updated_flags, ensure_ascii=False)
+
+    @staticmethod
+    def _parse_node_payload(node: GraphQuestNode) -> Dict[str, Any]:
+        if not node.node_data:
+            return {}
+        try:
+            payload = json.loads(node.node_data)
+            return payload if isinstance(payload, dict) else {}
+        except json.JSONDecodeError:
+            logger.warning("Invalid node payload JSON for node %s", node.id)
+            return {}
+
+    @staticmethod
+    async def _apply_node_effects(session, hero, node_payload: Dict[str, Any]) -> None:
+        if not hero or not node_payload:
+            return
+
+        world_flags = node_payload.get('world_flags') if isinstance(node_payload, dict) else None
+        if not world_flags:
+            return
+
+        set_flags = world_flags.get('set') if isinstance(world_flags, dict) else None
+        clear_flags = world_flags.get('clear') if isinstance(world_flags, dict) else None
+
+        updated_flags = await update_hero_world_flags(
+            session,
+            hero.id,
+            set_flags=set_flags if isinstance(set_flags, dict) else None,
+            clear_flags=clear_flags if isinstance(clear_flags, (list, tuple, set)) else None
+        )
+        hero.world_flags = json.dumps(updated_flags, ensure_ascii=False)
+
+    @staticmethod
+    async def _apply_chain_step(session, hero, quest_id: int) -> None:
+        if not hero:
+            return
+
+        chain_info = await get_quest_chain_info(session, quest_id)
+        if not chain_info:
+            return
+
+        chain_id = chain_info.get('id')
+        step = chain_info.get('step')
+        if not chain_id or step is None:
+            return
+
+        set_flags = {
+            f"{chain_id}.step": step,
+            f"{chain_id}.completed": True,
+        }
+
+        updated_flags = await update_hero_world_flags(
+            session,
+            hero.id,
+            set_flags=set_flags,
+        )
+        hero.world_flags = json.dumps(updated_flags, ensure_ascii=False)
 
     @staticmethod
     async def _save_progress_state(
@@ -262,6 +408,9 @@ class GraphQuestManager:
             quest = await get_graph_quest_by_id(session, quest_id)
             if not quest or not quest.is_active:
                 return None
+
+            hero = await get_hero_for_telegram(session, user_id)
+            hero_flags = GraphQuestManager._parse_world_flags(hero)
             
             # Check if user already has progress on this quest
             existing_progress = await get_user_graph_quest_progress(session, user_id, quest_id)
@@ -291,6 +440,7 @@ class GraphQuestManager:
                 if existing_progress.status == 'active':
                     current_node = await get_graph_quest_node_by_id(session, existing_progress.current_node_id)
                     connections = await get_graph_quest_connections(session, existing_progress.current_node_id)
+                    connections = GraphQuestManager._filter_connections_for_flags(hero_flags, connections)
                     return {
                         'quest': quest,
                         'current_node': current_node,
@@ -298,6 +448,19 @@ class GraphQuestManager:
                         'progress': existing_progress
                     }
             
+            requirement_result = await check_quest_requirements(
+                session=session,
+                quest_id=quest.id,
+                user_id=user_id,
+                hero_id=hero.id if hero else None,
+            )
+            if not requirement_result.met:
+                return {
+                    'quest': quest,
+                    'locked_reasons': requirement_result.missing_reasons,
+                    'requirements': requirement_result.requirements,
+                }
+
             # Get start node
             start_node = await get_graph_quest_start_node(session, quest_id)
             if not start_node:
@@ -305,6 +468,7 @@ class GraphQuestManager:
             
             # Get connections from start node
             connections = await get_graph_quest_connections(session, start_node.id)
+            connections = GraphQuestManager._filter_connections_for_flags(hero_flags, connections)
             
             # Create new progress with empty encounter state
             initial_state = {
@@ -353,6 +517,9 @@ class GraphQuestManager:
 
             quest_state = GraphQuestManager._load_progress_state(progress)
 
+            hero = await GraphQuestManager._get_user_hero(session, user_id)
+            hero_flags = GraphQuestManager._parse_world_flags(hero)
+
             if quest_state.get('needs_recovery'):
                 if await GraphQuestManager._is_hero_fully_healed(session, user_id):
                     quest_state['needs_recovery'] = False
@@ -380,7 +547,8 @@ class GraphQuestManager:
             progress = await GraphQuestManager._save_progress_state(session, progress, quest_state)
 
             # Get all connections from current node
-            connections = await get_graph_quest_connections(session, node_id)
+            all_connections = await get_graph_quest_connections(session, node_id)
+            connections = GraphQuestManager._filter_connections_for_flags(hero_flags, all_connections)
 
             # Find the specific connection
             target_connection = None
@@ -391,11 +559,17 @@ class GraphQuestManager:
             
             if not target_connection:
                 return None
-            
+
+            connection_payload = GraphQuestManager._parse_connection_payload(target_connection)
+            await GraphQuestManager._apply_connection_effects(session, hero, connection_payload)
+            hero_flags = GraphQuestManager._parse_world_flags(hero)
+
             # Get the target node
             next_node = await get_graph_quest_node_by_id(session, target_connection.to_node_id)
             if not next_node:
                 return None
+
+            node_payload = GraphQuestManager._parse_node_payload(next_node)
 
             # Update progress to next node
             await update_graph_quest_progress(session, progress, current_node_id=next_node.id)
@@ -407,14 +581,19 @@ class GraphQuestManager:
                 quest_state['recovery_node'] = None
                 progress = await GraphQuestManager._save_progress_state(session, progress, quest_state)
 
+            await GraphQuestManager._apply_node_effects(session, hero, node_payload)
+            hero_flags = GraphQuestManager._parse_world_flags(hero)
+
             # Get connections from next node
-            next_connections = await get_graph_quest_connections(session, next_node.id)
+            next_connections_all = await get_graph_quest_connections(session, next_node.id)
+            next_connections = GraphQuestManager._filter_connections_for_flags(hero_flags, next_connections_all)
 
             # Check if quest is completed
             completed = next_node.is_final
 
             if completed:
                 await update_graph_quest_progress(session, progress, status='completed')
+                await GraphQuestManager._apply_chain_step(session, hero, quest_id)
 
             # Check for encounters in the new node
             encounter = None
@@ -426,32 +605,31 @@ class GraphQuestManager:
                 encounter = GraphQuestManager._deserialize_encounter(active_encounter.get("encounter"))
 
             # Generate a new encounter only if node has tags and it wasn't completed
-            if not encounter and not encounter_completed and next_node.node_data:
-                try:
-                    node_payload = json.loads(next_node.node_data)
-                    encounter_tags = node_payload.get('encounter_tags')
-                except json.JSONDecodeError:
-                    encounter_tags = None
+            encounter_tags = (
+                node_payload.get('encounter_tags')
+                if isinstance(node_payload, dict)
+                else None
+            )
 
-                if encounter_tags:
-                    EncounterManager = GraphQuestManager._get_encounter_manager()
-                    encounter = await EncounterManager.trigger_encounter(
-                        user_id,
-                        {
-                            'id': next_node.id,
-                            'quest_id': quest_id,
-                            'encounter_tags': encounter_tags
-                        }
-                    )
+            if not encounter and not encounter_completed and encounter_tags:
+                EncounterManager = GraphQuestManager._get_encounter_manager()
+                encounter = await EncounterManager.trigger_encounter(
+                    user_id,
+                    {
+                        'id': next_node.id,
+                        'quest_id': quest_id,
+                        'encounter_tags': encounter_tags
+                    }
+                )
 
-                    if encounter:
-                        quest_state['active_encounter'] = {
-                            'quest_id': quest_id,
-                            'node_id': next_node.id,
-                            'status': 'pending',
-                            'encounter': GraphQuestManager._serialize_encounter(encounter)
-                        }
-                        progress = await GraphQuestManager._save_progress_state(session, progress, quest_state)
+                if encounter:
+                    quest_state['active_encounter'] = {
+                        'quest_id': quest_id,
+                        'node_id': next_node.id,
+                        'status': 'pending',
+                        'encounter': GraphQuestManager._serialize_encounter(encounter)
+                    }
+                    progress = await GraphQuestManager._save_progress_state(session, progress, quest_state)
 
             # Clear encounter state if none needed
             if not encounter and active_encounter:
@@ -492,7 +670,11 @@ class GraphQuestManager:
             encounter = GraphQuestManager._deserialize_encounter(active_encounter.get('encounter'))
             quest = await get_graph_quest_by_id(session, quest_id)
             node = await get_graph_quest_node_by_id(session, node_id)
-            connections = await get_graph_quest_connections(session, node_id)
+            hero = await GraphQuestManager._get_user_hero(session, user_id)
+            hero_flags = GraphQuestManager._parse_world_flags(hero)
+
+            connections_all = await get_graph_quest_connections(session, node_id)
+            connections = GraphQuestManager._filter_connections_for_flags(hero_flags, connections_all)
 
             EncounterManager = GraphQuestManager._get_encounter_manager()
 
@@ -570,7 +752,11 @@ class GraphQuestManager:
                 )
 
                 prev_node = await get_graph_quest_node_by_id(session, prev_node_id)
-                prev_connections = await get_graph_quest_connections(session, prev_node_id)
+                prev_connections_all = await get_graph_quest_connections(session, prev_node_id)
+                prev_connections = GraphQuestManager._filter_connections_for_flags(
+                    hero_flags,
+                    prev_connections_all
+                )
 
                 note = failure_note or "🏃 Ви відступили до попередньої точки. На вас накладено дебаф." 
                 quest_text = (
@@ -937,8 +1123,11 @@ async def handle_graph_quest_continue(callback: CallbackQuery):
     async with AsyncSessionLocal() as session:
         quest = await get_graph_quest_by_id(session, quest_id)
         current_node = await get_graph_quest_node_by_id(session, node_id)
-        connections = await get_graph_quest_connections(session, node_id)
-        
+        connections_all = await get_graph_quest_connections(session, node_id)
+        hero = await get_hero_for_telegram(session, callback.from_user.id)
+        hero_flags = GraphQuestManager._parse_world_flags(hero)
+        connections = GraphQuestManager._filter_connections_for_flags(hero_flags, connections_all)
+
         if not quest or not current_node:
             await callback.answer("Quest not found.", show_alert=True)
             return
