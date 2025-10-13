@@ -498,9 +498,31 @@ async def start_journey(callback: CallbackQuery, state: FSMContext):
         from app.database import get_town_connections
         connections = await get_town_connections(session, current_node.id)
         
-        # Create keyboard with available actions
-        from app.keyboards import create_town_keyboard
-        keyboard = await create_town_keyboard(connections, current_node.id)
+        # Create keyboard with available actions based on current node type
+        from app.keyboards import TownKeyboardBuilder
+
+        if current_node.node_type == "guild":
+            keyboard = TownKeyboardBuilder.guild_keyboard(town.id, current_node.id)
+        elif current_node.node_type == "barracks":
+            keyboard = TownKeyboardBuilder.barracks_keyboard(town.id, current_node.id)
+        elif current_node.node_type == "square":
+            keyboard = TownKeyboardBuilder.square_keyboard(town.id, current_node.id)
+        elif current_node.node_type == "inn":
+            keyboard = TownKeyboardBuilder.inn_keyboard(town.id, current_node.id)
+        else:
+            # Fetch human-readable names for connected nodes
+            node_names: dict[int, str] = {}
+            for connection in connections:
+                target_node = await get_town_node_by_id(session, connection.to_node_id)
+                if target_node:
+                    node_names[connection.to_node_id] = target_node.name
+
+            keyboard = TownKeyboardBuilder.town_node_keyboard(
+                town_id=town.id,
+                node_id=current_node.id,
+                connections=connections,
+                node_names=node_names,
+            )
         
         try:
             await callback.message.edit_text(welcome_text, reply_markup=keyboard)
